@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="only light">
+  <title>Simulador de mano protésica</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4' fill='%23001F3F'/%3E%3Ccircle cx='8' cy='8' r='3' fill='%23D81B60'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/static/vendor/three/three.module.js",
+        "three/addons/": "/static/vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="stage" class="stage" aria-label="Escena 3D de la mano"></main>
+
+  <!-- Marca mínima + estado de conexión / Minimal brand + connection state -->
+  <header class="brand">
+    <span class="brand__dot" id="conn" data-state="off" aria-hidden="true"></span>
+    <span class="brand__name" data-i18n="title">Mano protésica</span>
+    <span class="brand__motion" id="motion-pill" hidden></span>
+  </header>
+
+  <!-- Botón del panel / Panel button -->
+  <button class="fab" id="toggle" type="button" aria-controls="drawer" aria-expanded="false" data-i18n-title="toggle">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path d="M4 7h10M18 7h2M4 17h4M12 17h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+      <circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    </svg>
+    <span class="fab__badge" id="badge" hidden></span>
+  </button>
+
+  <!-- Aviso breve del último comando / Brief last-command notice -->
+  <div class="toast" id="toast" role="status" aria-live="polite" data-show="false">
+    <code class="toast__frame" id="toast-frame"></code>
+    <span class="toast__detail" id="toast-detail"></span>
+  </div>
+
+  <p class="hint" id="hint" data-i18n="hint">Arrastra para orbitar · rueda para acercar · doble clic para centrar</p>
+
+  <div class="loader" id="loader" data-i18n="loading">Generando la mano…</div>
+
+  <!-- Panel plegable / Collapsible panel -->
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title" inert>
+    <header class="drawer__head">
+      <h1 id="drawer-title" data-i18n="panel">Estado</h1>
+      <button class="icon-btn" id="close" type="button" data-i18n-title="close">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </header>
+
+    <dl class="facts">
+      <div><dt data-i18n="connection">Conexión</dt><dd id="conn-text">—</dd></div>
+      <div><dt data-i18n="profile">Perfil de límites</dt><dd id="profile" class="mono">—</dd></div>
+      <div><dt data-i18n="motion">Movimiento</dt><dd id="motion">—</dd></div>
+      <div><dt data-i18n="origin">Origen de encóderes</dt><dd id="origin">—</dd></div>
+    </dl>
+
+    <table class="actuators">
+      <thead>
+        <tr>
+          <th></th>
+          <th data-i18n="finger">Dedo</th>
+          <th class="num" data-i18n="counts">Cuentas</th>
+          <th class="num" data-i18n="norm">Norm.</th>
+          <th class="num" data-i18n="range">Rango</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <section class="last">
+      <h2 data-i18n="last">Último comando</h2>
+      <div class="last__line">
+        <code id="last-frame" class="mono">—</code>
+        <span class="chip" id="last-verdict" hidden></span>
+      </div>
+      <p id="last-detail" class="last__detail"></p>
+    </section>
+
+    <label class="switch">
+      <input type="checkbox" id="highlight" checked>
+      <span class="switch__track" aria-hidden="true"></span>
+      <span data-i18n="highlight">Teñir el dedo que se mueve</span>
+    </label>
+
+    <p class="drawer__foot" data-i18n="shortcut">Tecla <kbd>I</kbd> abre y cierra este panel · <kbd>Esc</kbd> lo cierra</p>
+  </aside>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

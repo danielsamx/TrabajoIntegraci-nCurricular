@@ -1,0 +1,33 @@
+# Levantar / Start:   docker compose up --build
+# Página / Page:      http://localhost:8000
+# Pruebas / Tests:    docker compose --profile test run --rm tests
+name: prosthesis-simulator
+
+services:
+  simulator:
+    build:
+      context: .
+      target: runtime
+    image: prosthesis-simulator:latest
+    container_name: prosthesis-simulator
+    ports:
+      # Cambia el primer número para otro puerto en tu máquina.
+      # Change the first number to use another port on your machine.
+      - "${SIM_PORT:-8000}:8000"
+    environment:
+      # Orígenes de navegador adicionales con permiso (separados por comas). Vacío = solo la propia página.
+      # Extra browser origins allowed (comma-separated). Empty = only the page itself.
+      SIM_ALLOWED_ORIGINS: "${SIM_ALLOWED_ORIGINS:-}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    image: prosthesis-simulator:test
