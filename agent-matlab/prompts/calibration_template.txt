@@ -1,0 +1,14 @@
+### ES
+CALIBRACIÓN DEL USUARIO ACTUAL
+- Usuario: {{USER_ID}} | Fecha: {{CALIB_DATE}} | Calibración genérica: {{IS_DEFAULT}} | Precisión LDA (validación cruzada): {{CV_ACCURACY}}
+- Canales dominantes medidos por dedo (tienen prioridad sobre el mapa de referencia): {{TOP_CHANNELS}}
+- Perfil RMS normalizado medio por dedo (CH1..CH8):
+{{PROFILE_TABLE}}
+- Uso: si el patrón de la ventana se parece más al perfil de un dedo que a la regla de referencia, decide según el perfil. Si la calibración es genérica, limita confidence a 0.80.
+### EN
+CURRENT USER CALIBRATION
+- User: {{USER_ID}} | Date: {{CALIB_DATE}} | Generic calibration: {{IS_DEFAULT}} | LDA accuracy (cross-validation): {{CV_ACCURACY}}
+- Measured dominant channels per finger (take priority over the reference map): {{TOP_CHANNELS}}
+- Mean normalized RMS profile per finger (CH1..CH8):
+{{PROFILE_TABLE}}
+- Usage: if the window pattern looks more like a finger profile than the reference rule, decide by the profile. If the calibration is generic, cap confidence at 0.80.
