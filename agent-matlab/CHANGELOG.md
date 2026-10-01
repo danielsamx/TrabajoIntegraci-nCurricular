@@ -6,6 +6,102 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.0.0] - 2026-09-30
+
+### Changed / Cambiado
+- Sin calibración: cada canal se normaliza con valores fijos de reposo y máximo en
+  `config/agent_config.m`. Se eliminan `calibrate`, el LDA y `calibration.mat`.
+- Toda la configuración (fuente, señal, LLM, prótesis, suavizado, consola) está en
+  `config/agent_config.m`; el system prompt pasa a `config/system_es.txt` / `system_en.txt`.
+  Ya no hay archivos `.mat` ni `setup`.
+- Todo se imprime en consola en cada ciclo: muestras crudas y filtradas, RMS/MAV, estado,
+  petición y respuesta completa del LLM, validación, comando, suavizado y respuesta de la
+  prótesis. La consola se guarda en `logs/sesion_<fecha>.txt`.
+- Las muestras se procesan completas y en orden (ventanas de 40 filas por archivo); la
+  sesión termina al acabar `muestra_15` (`cfg.samples.loop = true` para repetir).
+- Si el LLM falla decide `utils/fallback_command.m`, con las mismas reglas del prompt.
+- Código reescrito y reducido, con un comentario corto por línea.
+
+### Removed / Eliminado
+- Fuentes UDP y simulada, `main_debug`, el logger JSONL, la plantilla de calibración, los
+  ejemplos few-shot sueltos y `docs/` (la documentación vigente está en los README).
+  La versión anterior queda en `respaldo_v1.3.1.zip`.
+
+## [1.3.1] - 2026-09-27
+
+### Fixed / Corregido
+- The fallback to `samples/muestra_1..15` now also triggers when the Myo connects but sends
+  no EMG within 3 s, or stops sending it for 3 s during the session.
+  / El respaldo con las muestras también se activa si el Myo conecta pero no envía EMG en
+  3 s, o deja de enviarlo 3 s durante la sesión (`connect_timeout`, `dropout_timeout`).
+
+## [1.3.0] - 2026-09-27
+
+### Changed / Cambiado
+- The prosthesis now lives in two files: `prosthesis/prosthesis_config.m` (host, port,
+  endpoint, method, timeout, safe command) and `prosthesis/send_prosthesis_command.m`, which
+  performs `POST http://localhost:8000/api/command` with `{"command": "B"}`.
+  / La prótesis queda en dos archivos: `prosthesis_config.m` con los datos del servidor y
+  `send_prosthesis_command.m` con el envío.
+- The body carries only the validated command, as the prosthesis server expects.
+  / El cuerpo lleva solo el comando validado, como espera el servidor de la prótesis.
+
+### Removed / Eliminado
+- `tests/` folder. / Carpeta `tests/`.
+- `prosthesis_simulator.m` and the `SIM` protocol, replaced by the user's own server.
+  / `prosthesis_simulator.m` y el protocolo `SIM`, sustituidos por el servidor propio.
+- `config/create_server_prosthesis_config.m` and `server-prosthesis.mat`: the prosthesis
+  configuration is plain code now. / El `.mat` de la prótesis: su configuración es código.
+- The `mock` transport and the experimental `parallel` mode in `send_input_llm.m`, along
+  with the config-injection options in `main.m`; they only existed for the tests.
+  / El transporte `mock`, el modo `parallel` y las configuraciones inyectables de `main.m`.
+
+## [1.2.0] - 2026-09-27
+
+### Added / Añadido
+- New `samples` acquisition source: plays back `samples/muestra_1..15` (`.csv` or `.xlsx`,
+  header `CH0..CH7`, one sample per row) at 200 Hz, in numeric order and looping.
+  / Nueva fuente de adquisición `samples`: reproduce `samples/muestra_1..15` a 200 Hz, en
+  orden numérico y en bucle.
+- Automatic fallback: with `'Source', 'myo'`, if the armband does not connect the loop
+  continues with the recorded samples, or with the synthetic generator when there are none.
+  / Respaldo automático: con `'Source', 'myo'`, si el brazalete no conecta el bucle sigue
+  con las muestras grabadas, o con el generador sintético si no hay ninguna.
+- `'SamplesDir'` option in `main` and `calibrate`; the folder is otherwise located
+  automatically. / Opción `'SamplesDir'` en `main` y `calibrate`; si no, la carpeta se
+  busca sola.
+- `test_full_pipeline` gains scenario C over the recorded samples (skipped when the folder
+  is empty). / `test_full_pipeline` añade el escenario C sobre las muestras grabadas.
+
+### Changed / Cambiado
+- `test_parallel_ports` compares the command sequence, not the angle, because the angle
+  depends on the noise of the simulated source. / `test_parallel_ports` compara la
+  secuencia de comandos, no el ángulo, que depende del ruido de la señal simulada.
+
+## [1.1.0] - 2026-09-27
+
+### Changed / Cambiado
+- Code comments are now Spanish only, shorter and focused on the why; console messages and
+  log entries are also Spanish only. / Los comentarios del código son solo en español, más
+  breves y centrados en el motivo; los mensajes de consola y los logs también.
+- Clean-code pass over the 35 `.m` files: long functions split into small local functions
+  with intention-revealing names (`main.m` now reads as prepare, run loop, run cycle,
+  decide command; `send_input_llm.m` separates settings, sequential, parallel and mock),
+  magic numbers turned into named constants, guard clauses instead of nesting, and a single
+  helper per repeated operation. / Pasada de clean code sobre los 35 `.m`: funciones largas
+  divididas en funciones locales pequeñas con nombres que explican su intención, números
+  mágicos convertidos en constantes con nombre, cláusulas de guarda en vez de anidamiento y
+  un único ayudante por operación repetida.
+- Behaviour is unchanged: the same commands, the same port distribution and the same tests.
+  / El comportamiento no cambia: mismos comandos, mismo reparto de puertos y mismas pruebas.
+
+### Fixed / Corregido
+- Removed indexing into function call results (`ver().Name`, `train_lda(...).cv_accuracy`,
+  `myo_interface.instance().vibrate`), which MATLAB does not allow. / Eliminadas las
+  indexaciones sobre el resultado de una llamada, que MATLAB no permite.
+- `llm_logger` counts held commands from the `smoothing` field. / `llm_logger` cuenta los
+  comandos mantenidos con el campo `smoothing`.
+
 ## [1.0.0] - 2026-09-16
 
 ### Added / Añadido
