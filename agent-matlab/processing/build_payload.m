@@ -1,11 +1,13 @@
-function payload = build_payload(f, prev, t_ms)
+function payload = build_payload(f, prev, t_ms, cfg)
 % BUILD_PAYLOAD Texto de una línea que recibe el LLM:
-%   RMS:[r1..r8]|MAV:[m1..m8]|STATE:<estado>|PREV:<comando>:<valor>|T:<ms>
+%   RMS:[r1..r8]|SIM:[C=0.97,O=0.55]|STATE:<estado>|PREV:<comando>|T:<ms>
 
 rms_text = sprintf('%.2f,', f.rms);                         % RMS con 2 decimales separados por comas
-mav_text = sprintf('%.2f,', f.mav);                         % MAV con 2 decimales separados por comas
-prev_text = sprintf('%s:%03d', prev.command, round(prev.value)); % comando anterior, p. ej. B:095
+sim_text = '';                                              % similitud con cada gesto
+for g = 1:numel(cfg.gestures)
+    sim_text = [sim_text, sprintf('%s=%.2f,', cfg.gestures(g).command, f.similarity(g))]; %#ok<AGROW>
+end
 
-payload = sprintf('RMS:[%s]|MAV:[%s]|STATE:%s|PREV:%s|T:%d', ...
-    rms_text(1:end - 1), mav_text(1:end - 1), f.state, prev_text, round(t_ms)); % une todo sin la última coma
+payload = sprintf('RMS:[%s]|SIM:[%s]|STATE:%s|PREV:%s|T:%d', ...
+    rms_text(1:end - 1), sim_text(1:end - 1), f.state, prev.command, round(t_ms)); % une todo sin la última coma
 end

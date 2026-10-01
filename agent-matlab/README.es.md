@@ -50,10 +50,8 @@ processing/process_signals.m   filtro 20-95 Hz + notch, RMS, MAV, estado, ruido
 processing/build_payload.m     texto que recibe el LLM
 processing/generate_image.m    gráfico de barras que recibe el LLM
 llm/send_input_llm.m           petición HTTP al LLM
-llm/parse_llm_response.m       extrae el JSON de la respuesta
-llm/validate_command.m         comprueba que el comando es coherente
+llm/parse_llm_response.m       extrae y valida el JSON de la respuesta
 prosthesis/send_prosthesis_command.m   POST a la prótesis
-utils/command_info.m           tabla de comandos (dedos y gestos)
 utils/fallback_command.m       decisión local si el LLM falla
 utils/smooth_command.m         evita cambios bruscos entre ciclos
 utils/log_msg.m                línea de consola con hora
@@ -68,6 +66,23 @@ brazalete los valores quedan siempre bajos o siempre saturados, ajuste esos dos 
 
 ## Comandos
 
-`A`–`E` = pulgar, índice, medio, anular, meñique (grados) · `F` = muñeca ·
-gestos `#O #C #P #R #W #Y #L #M #H #U #G` (% de fuerza). La tabla está en
-`utils/command_info.m`.
+La prótesis recibe solo letras, sin `#`:
+
+| Comando | Gesto | Cómo se reconoce en las muestras |
+|---|---|---|
+| `C` | mano cerrada (puño) | CH7 alto y CH3 casi 0 |
+| `O` | mano abierta | CH3 alto y CH7 casi 0 |
+| `R` | reposo (mano relajada, algo abierta) | todos los RMS < 0.15 |
+
+Cada gesto se define en `cfg.gestures` de `agent_config.m` (comando, nombre, canales clave y
+perfil RMS medio). Esos datos se insertan en el system prompt al arrancar (marcador
+`{{GESTOS}}`) y se usan para calcular la similitud `SIM` que recibe el LLM. Para añadir un
+gesto, añada otra entrada en `cfg.gestures` con su perfil.
+
+Texto que recibe el LLM en cada ciclo:
+
+```
+RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|STATE:ACTIVE|PREV:R|T:1000
+```
+
+Respuesta esperada: `{"command":"C","confidence":0.90}`.

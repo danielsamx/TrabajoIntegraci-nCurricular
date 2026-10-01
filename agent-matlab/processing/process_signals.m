@@ -5,6 +5,7 @@ function f = process_signals(emg, cfg)
 %   f.rms, f.mav         : RMS y MAV normalizados a [0,1]
 %   f.state              : 'REST' | 'TRANSITION' | 'ACTIVE' | 'NOISE'
 %   f.noise              : motivo del ruido ('' si la ventana está limpia)
+%   f.similarity         : parecido (0-1) del RMS con el perfil de cada gesto de cfg.gestures
 
 s = cfg.signal;                                             % atajo a la configuración de la señal
 x = double(emg);                                            % muestras como números reales
@@ -34,6 +35,14 @@ elseif peak < s.rest_threshold                              % sin actividad
     f.state = 'REST';
 else                                                        % entre los dos umbrales
     f.state = 'TRANSITION';
+end
+
+f.similarity = zeros(1, numel(cfg.gestures));             % sin actividad, ningún gesto se parece
+if peak >= s.rest_threshold                                 % solo se compara si hay actividad
+    for g = 1:numel(cfg.gestures)                           % cada gesto configurado
+        ref = cfg.gestures(g).profile;                      % su perfil RMS de referencia
+        f.similarity(g) = dot(f.rms, ref) / (norm(f.rms) * norm(ref)); % similitud coseno: 1 = misma forma
+    end
 end
 
 f.noise = noise_reason(double(emg), x, y, s);               % comprueba si la ventana es ruido

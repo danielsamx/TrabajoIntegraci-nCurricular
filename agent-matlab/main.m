@@ -28,6 +28,7 @@ print_config(cfg);                                          % muestra la configu
 fid = fopen(cfg.llm.prompt_file, 'r', 'n', 'UTF-8');       % abre el prompt como UTF-8 (tildes)
 system_prompt = fread(fid, [1 Inf], '*char');               % reglas que sigue el LLM
 fclose(fid);                                                % cierra el archivo
+system_prompt = strrep(system_prompt, '{{GESTOS}}', gesture_lines(cfg)); % añade los gestos de la configuración
 log_msg('MAIN', 'System prompt: %s (%d caracteres)', cfg.llm.prompt_file, numel(system_prompt));
 if cfg.console.system_prompt
     fprintf('%s\n', system_prompt);                         % lo imprime completo
@@ -37,7 +38,7 @@ device = myo_interface(cfg);                                % Myo o muestras
 n = round(cfg.window_ms / 1000 * cfg.fs);                   % muestras por ventana (40)
 cleanup = onCleanup(@() finish(device, cfg));               % al salir: reposo, liberar Myo, cerrar log
 
-prev = struct('command', '#R', 'value', 0);                 % último comando enviado (al inicio, reposo)
+prev = struct('command', cfg.rest_command);                 % último comando enviado (al inicio, reposo)
 smoothing = [];                                             % memoria del suavizado
 stats = struct('cycles', 0, 'llm_ok', 0, 'fallback', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
 session = tic;                                              % reloj de la sesión
@@ -66,17 +67,21 @@ while stats.cycles < cfg.max_cycles
     print_vector('RMS [0,1]  ', f.rms, '%6.2f');
     print_vector('MAV crudo  ', f.mav_raw, '%6.2f');
     print_vector('MAV [0,1]  ', f.mav, '%6.2f');
+    for g = 1:numel(cfg.gestures)                           % parecido con cada gesto
+        log_msg('SEÑAL', 'Similitud con %s (%s): %.2f', cfg.gestures(g).command, ...
+            cfg.gestures(g).name, f.similarity(g));
+    end
     log_msg('SEÑAL', 'Estado: %s %s', f.state, f.noise);
 
     % 3. Entrada del LLM: texto + imagen
-    payload = build_payload(f, prev, t_ms);                 % texto de una línea
+    payload = build_payload(f, prev, t_ms, cfg);            % texto de una línea
     image_file = generate_image(f, t_ms, cfg);              % gráfico de barras en PNG
 
     % 4. LLM
     reply = send_input_llm(cfg.llm, system_prompt, payload, image_file);
     stats.llm_ms = stats.llm_ms + reply.latency_ms;         % acumula la latencia
     if reply.ok
-        [cmd, valid, reason] = parse_llm_response(reply.content); % extrae y valida el JSON
+        [cmd, valid, reason] = parse_llm_response(reply.content, cfg); % extrae y valida el JSON
     else
         [cmd, valid, reason] = deal([], false, reply.error); % no hubo respuesta
     end
@@ -93,7 +98,7 @@ while stats.cycles < cfg.max_cycles
     print_command('Decidido ', cmd);
 
     % 6. Suavizado y envío
-    [cmd, smoothing] = smooth_command(cmd, smoothing, cfg.smoothing);
+    [cmd, smoothing] = smooth_command(cmd, smoothing, cfg);
     print_command('A enviar ', cmd);
     log_msg('SUAVE', '%s', cmd.smoothing);
     if send_prosthesis_command(cfg.prosthesis, cmd.command)
@@ -144,6 +149,23 @@ log_msg('CONFIG', 'Filtro %d-%d Hz, notch %d Hz | umbrales REST %.2f, ACTIVE %.2
     cfg.signal.active_threshold);
 print_vector('RMS reposo ', cfg.signal.rest_rms, '%6.1f');
 print_vector('RMS máximo ', cfg.signal.max_rms, '%6.1f');
+log_msg('CONFIG', 'Comandos: %s = reposo', cfg.rest_command);
+for g = 1:numel(cfg.gestures)
+    log_msg('CONFIG', 'Comandos: %s = %s (%s)', cfg.gestures(g).command, ...
+        cfg.gestures(g).name, cfg.gestures(g).hint);
+end
+end
+
+function text = gesture_lines(cfg)
+% Una línea del prompt por gesto: comando, nombre, canales clave y perfil RMS.
+text = '';
+for g = 1:numel(cfg.gestures)
+    gesture = cfg.gestures(g);                              % gesto actual
+    profile = sprintf('%.2f,', gesture.profile);            % perfil con 2 decimales
+    text = [text, sprintf('- %s = %s. Canales clave: %s. Perfil RMS medio CH1..CH8: [%s]\n', ...
+        gesture.command, gesture.name, gesture.hint, profile(1:end - 1))]; %#ok<AGROW>
+end
+text = strtrim(text);                                       % quita el último salto de línea
 end
 
 function print_matrix(name, data, fmt)
@@ -166,8 +188,5 @@ end
 
 function print_command(name, cmd)
 % Imprime un comando en una línea.
-info = command_info(cmd.command);                           % nombre legible del comando
-log_msg('CMD', '%s %-3s (%s) | %s | value %d | confianza %.2f | canales [%s] | origen %s', ...
-    name, cmd.command, info.name, cmd.action, round(cmd.value), cmd.confidence, ...
-    num2str(cmd.trigger_channels), cmd.source);
+log_msg('CMD', '%s %s | confianza %.2f | origen %s', name, cmd.command, cmd.confidence, cmd.source);
 end

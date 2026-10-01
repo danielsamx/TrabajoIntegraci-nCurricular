@@ -6,6 +6,18 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.1.0] - 2026-10-01
+
+### Changed / Cambiado
+- Comandos sin '#': la prótesis recibe `C` (puño), `O` (mano abierta) y `R` (reposo, mano
+  relajada algo abierta). Se quitan los comandos de dedos A-F y el resto de gestos.
+- Gestos definidos en `cfg.gestures` con su perfil RMS medio medido en `samples/`. El system
+  prompt se reescribió: corto, con un procedimiento paso a paso y ejemplos reales; los gestos se
+  insertan en `{{GESTOS}}` al arrancar.
+- El payload incluye `SIM` (similitud coseno con cada perfil) y deja de incluir MAV.
+- La respuesta del LLM es solo `{"command":"C","confidence":0.90}`; `max_tokens` = 40.
+- El respaldo elige el gesto más parecido (o R sin actividad), con el mismo procedimiento.
+
 ## [2.0.0] - 2026-09-30
 
 ### Changed / Cambiado

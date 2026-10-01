@@ -1,6 +1,6 @@
-function [cmd, ok, reason] = parse_llm_response(text)
-% PARSE_LLM_RESPONSE Extrae el JSON del texto del LLM y comprueba que es un comando válido.
-%   cmd    : struct con command, finger, action, confidence, trigger_channels, value, source
+function [cmd, ok, reason] = parse_llm_response(text, cfg)
+% PARSE_LLM_RESPONSE Extrae {"command":"C","confidence":0.90} del texto del LLM y lo valida.
+%   cmd    : struct con command, confidence y source
 %   ok     : true si el comando se puede enviar a la prótesis
 %   reason : motivo del rechazo ('' si ok)
 
@@ -16,11 +16,11 @@ if isempty(first)                                           % no hay JSON
 end
 json = strtrim(text(first:end));                            % desde la primera llave
 last = find(json == '}', 1, 'last');                        % última llave de cierre
-if ~isempty(last)
+if isempty(last)
+    json = [json '}'];                                      % cierra la llave que corta el stop
+else
     json = json(1:last);                                    % descarta lo que venga después
 end
-json = [json, repmat(']', 1, sum(json == '[') - sum(json == ']'))]; % cierra corchetes cortados
-json = [json, repmat('}', 1, sum(json == '{') - sum(json == '}'))]; % cierra la llave que corta el stop
 
 try
     data = jsondecode(json);                                % texto -> struct
@@ -28,20 +28,23 @@ catch err
     reason = ['JSON no válido: ' err.message];
     return;
 end
-
-fields = {'command', 'finger', 'action', 'confidence', 'trigger_channels', 'value'};
-if ~isstruct(data) || ~all(isfield(data, fields))           % faltan campos obligatorios
-    reason = 'faltan campos en el JSON';
+if ~isstruct(data) || ~isfield(data, 'command') || ~isfield(data, 'confidence')
+    reason = 'faltan los campos command o confidence';
     return;
 end
 
-cmd.command = upper(strtrim(char(data.command)));           % código del comando
-cmd.finger = upper(strtrim(char(data.finger)));             % dedo
-cmd.action = lower(strtrim(char(data.action)));             % acción
+allowed = [{cfg.rest_command}, {cfg.gestures.command}];     % comandos válidos: R, C, O
+cmd.command = upper(strtrim(char(data.command)));           % comando en mayúsculas
+cmd.command = strrep(cmd.command, '#', '');                 % por si el modelo añade '#'
 cmd.confidence = double(data.confidence);                   % confianza
-cmd.trigger_channels = double(data.trigger_channels(:)');   % canales como vector fila
-cmd.value = double(data.value);                             % ángulo o fuerza
 cmd.source = 'llm';                                         % decidido por el LLM
 
-[ok, reason] = validate_command(cmd);                       % comprueba coherencia y rangos
+if ~any(strcmp(cmd.command, allowed))                       % comando fuera de la lista
+    reason = sprintf('comando "%s" no permitido (solo %s)', cmd.command, strjoin(allowed, ', '));
+elseif ~isscalar(cmd.confidence) || ~(cmd.confidence >= 0 && cmd.confidence <= 1)
+    reason = 'confidence fuera de [0,1]';
+else
+    ok = true;                                              % comando válido
+    reason = '';
+end
 end
