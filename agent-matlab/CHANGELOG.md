@@ -6,6 +6,34 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.3.1] - 2026-10-04
+
+### Fixed / Corregido
+- Indicadores del dashboard: el título y el valor ya no se superponen (acento amarillo arriba,
+  título pequeño y valor grande debajo). Todas las piezas se colocan en celdas explícitas.
+- Iniciar / Detener pasan a la cabecera (sustituyen al indicador de estado): solo uno está
+  activo a la vez.
+
+## [2.3.0] - 2026-10-04
+
+### Changed / Cambiado
+- `agent_ui` rediseñada: colores del laboratorio (rojo #EE2E24, azul #002A5C, amarillo
+  #FDBE57, blanco), logo `assets/logo-laboratorio-alan-turing.png` en la cabecera, navegación
+  Dashboard/Prompt en la cabecera, píldora de estado y tarjetas blancas.
+- Cada botón está en su apartado: Iniciar/Detener en Adquisición, Probar conexión en Servidor
+  LLM y en Prótesis, Exportar PNG en la vista general, Guardar configuración al final.
+- Comando de reposo `S` (antes `R`, que la prótesis interpreta como SPIDERMAN).
+
+## [2.2.0] - 2026-10-03
+
+### Added / Añadido
+- `agent_ui`: interfaz gráfica con barra lateral (adquisición, servidor LLM, prótesis),
+  dashboard (indicadores, 8 canales, vista general exportable, imagen enviada al LLM,
+  historial de comandos, detalle del ciclo) y pestaña de prompt (plantilla editable y prompt
+  final). "Guardar configuración" escribe los cambios en `config/agent_config.m`.
+- `agent/agent_session.m`: el ciclo del agente en una clase que usan `main` y `agent_ui`.
+- Marcador `{{REPOSO}}` en el prompt para el comando de reposo configurable.
+
 ## [2.1.0] - 2026-10-01
 
 ### Changed / Cambiado

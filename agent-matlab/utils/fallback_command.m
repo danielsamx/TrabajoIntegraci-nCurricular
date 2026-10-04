@@ -1,6 +1,6 @@
 function cmd = fallback_command(f, prev, cfg)
 % FALLBACK_COMMAND Decide el comando sin el LLM (si no responde o responde mal).
-%   Mismo procedimiento que el system prompt: ruido -> PREV, sin actividad -> R,
+%   Mismo procedimiento que el system prompt: ruido -> PREV, sin actividad -> reposo,
 %   con actividad -> el gesto cuyo perfil se parece más (mayor similitud).
 
 if strcmp(f.state, 'NOISE')                                 % señal mala

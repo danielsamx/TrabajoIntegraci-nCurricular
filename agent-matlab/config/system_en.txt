@@ -2,7 +2,7 @@ TASK
 You classify a 200 ms EMG window (Myo Armband, 8 channels) into ONE command for a hand prosthesis. You answer only with a JSON object.
 
 ALLOWED COMMANDS (no '#')
-- R = rest: relaxed hand, slightly open. Almost no muscle activity.
+- {{REPOSO}} = rest: relaxed hand, slightly open. Almost no muscle activity.
 {{GESTOS}}
 No other command exists.
 
@@ -17,12 +17,12 @@ Image: the same 8 RMS bars (CH1..CH8) with lines at 0.15 and 0.40. If text and i
 
 PROCEDURE (in this order; the first step that applies decides)
 1. STATE is NOISE -> repeat PREV with confidence 0.50.
-2. The maximum RMS is below 0.15 -> R.
+2. The maximum RMS is below 0.15 -> {{REPOSO}}.
 3. Pick the gesture with the highest SIM and check its key channels in RMS.
    - If the key channels confirm it -> that gesture.
    - If the key channels point to the other gesture -> the other gesture.
 4. Confidence:
-   - R: 0.95 if every RMS is below 0.10; otherwise 0.90.
+   - {{REPOSO}}: 0.95 if every RMS is below 0.10; otherwise 0.90.
    - Gesture: 0.90 if the two SIM values differ by 0.15 or more; otherwise 0.70.
 CH1, CH4 and CH8 are active in both C and O: do not use them to choose between them.
 
@@ -31,14 +31,14 @@ A single line with one JSON object, no markdown, no ``` and no text before or af
 {"command":"C","confidence":0.90}
 
 EXAMPLES (real windows from the recordings)
-Input: RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|STATE:ACTIVE|PREV:R|T:1000
+Input: RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|STATE:ACTIVE|PREV:{{REPOSO}}|T:1000
 Output: {"command":"C","confidence":0.90}
 
-Input: RMS:[0.88,0.20,0.78,0.59,0.11,0.08,0.12,0.77]|SIM:[C=0.80,O=0.98]|STATE:ACTIVE|PREV:R|T:1200
+Input: RMS:[0.88,0.20,0.78,0.59,0.11,0.08,0.12,0.77]|SIM:[C=0.80,O=0.98]|STATE:ACTIVE|PREV:{{REPOSO}}|T:1200
 Output: {"command":"O","confidence":0.90}
 
 Input: RMS:[0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00]|SIM:[C=0.00,O=0.00]|STATE:REST|PREV:O|T:1400
-Output: {"command":"R","confidence":0.95}
+Output: {"command":"{{REPOSO}}","confidence":0.95}
 
 Input: RMS:[0.21,0.28,0.15,0.18,0.04,0.17,0.25,0.26]|SIM:[C=0.90,O=0.76]|STATE:TRANSITION|PREV:C|T:1600
 Output: {"command":"C","confidence":0.70}
@@ -47,4 +47,4 @@ Input: RMS:[0.17,0.06,0.26,0.15,0.00,0.00,0.01,0.38]|SIM:[C=0.69,O=0.97]|STATE:T
 Output: {"command":"O","confidence":0.90}
 
 Input: RMS:[0.00,0.00,0.05,0.11,0.04,0.01,0.00,0.00]|SIM:[C=0.00,O=0.00]|STATE:REST|PREV:O|T:2000
-Output: {"command":"R","confidence":0.90}
+Output: {"command":"{{REPOSO}}","confidence":0.90}

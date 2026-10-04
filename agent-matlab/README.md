@@ -10,11 +10,12 @@ No calibration is needed. Everything is printed to the console.
 ## Usage
 
 ```matlab
+agent_ui          % graphical interface: settings sidebar, live dashboard, prompt editor
 main              % Myo; falls back to the samples if it is not active
 main('samples')   % play samples/ directly
 ```
 
-All settings live in `config/agent_config.m`. **Ctrl+C** stops the agent and `#R` (rest) is
+All settings live in `config/agent_config.m`. **Ctrl+C** stops the agent and the rest command (`S`) is
 always sent on exit. The full console output is saved to `logs/sesion_<date>.txt`.
 
 Requirements: MATLAB R2023b+ with Signal Processing Toolbox, LM Studio with a vision model,

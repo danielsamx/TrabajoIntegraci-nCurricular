@@ -31,7 +31,7 @@ cfg.signal.active_threshold = 0.40;                         % por encima: ACTIVE
 cfg.signal.saturation_level = 127;                          % valor de saturación del Myo (int8)
 
 %% Comandos de la prótesis (sin '#')
-cfg.rest_command = 'R';                                     % reposo: mano relajada, ligeramente abierta
+cfg.rest_command = 'S';                                     % reposo: mano relajada, ligeramente abierta
 cfg.gestures(1).command = 'C';                              % comando de la mano cerrada
 cfg.gestures(1).name = 'mano cerrada (puño)';               % nombre para el prompt y la consola
 cfg.gestures(1).hint = 'CH7 alto y CH3 casi 0';             % canales que lo distinguen
@@ -47,7 +47,7 @@ cfg.image.height = 480;                                     % alto en píxeles
 cfg.image.file = fullfile(tempdir, 'emg_bars.png');         % archivo temporal de la imagen
 
 %% Servidor del LLM (LM Studio)
-cfg.llm.ip = '100.78.75.38';                                % IP del servidor
+cfg.llm.ip = '100.92.219.95';                                % IP del servidor
 cfg.llm.ports = 1234;                                       % puertos; se prueban en orden, p. ej. [1234 1235]
 cfg.llm.endpoint = '/v1/chat/completions';                  % endpoint compatible con OpenAI
 cfg.llm.model = 'mistralai/ministral-3-3b';                 % modelo cargado en LM Studio
@@ -63,7 +63,7 @@ cfg.prosthesis.host = '100.73.114.17';                      % IP del servidor de
 cfg.prosthesis.port = 8000;                                 % puerto
 cfg.prosthesis.endpoint = '/api/command';                   % ruta del POST
 cfg.prosthesis.timeout = 0.5;                               % s de espera por comando
-cfg.prosthesis.safe_command = 'R';                          % comando de reposo al terminar
+cfg.prosthesis.safe_command = 'S';                          % comando de reposo al terminar
 
 %% Suavizado del comando
 cfg.smoothing.window = 3;                                   % comandos recordados para el voto

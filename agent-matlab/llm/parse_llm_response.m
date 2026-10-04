@@ -33,7 +33,7 @@ if ~isstruct(data) || ~isfield(data, 'command') || ~isfield(data, 'confidence')
     return;
 end
 
-allowed = [{cfg.rest_command}, {cfg.gestures.command}];     % comandos válidos: R, C, O
+allowed = [{cfg.rest_command}, {cfg.gestures.command}];     % comandos válidos: reposo (S), C, O
 cmd.command = upper(strtrim(char(data.command)));           % comando en mayúsculas
 cmd.command = strrep(cmd.command, '#', '');                 % por si el modelo añade '#'
 cmd.confidence = double(data.confidence);                   % confianza
