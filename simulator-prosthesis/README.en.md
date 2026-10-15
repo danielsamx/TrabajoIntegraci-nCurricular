@@ -296,36 +296,48 @@ The simulator keeps "absolute" counts from the factory origin. The encoder reads
 
 ## The scene
 
-The screen is just the hand. Everything else folds away:
+The screen is just the hand. There is no side panel:
 
 - **Top left:** the name and a connection dot (navy = connected, blinking amber = disconnected). While something moves, a pink label lists the letters in motion.
-- **Bottom centre:** a brief notice for each command (line, gesture, duration). It hides itself after 2.6 s; rejections stay 7 s with an amber bar, and the panel button shows an amber dot.
-- **Top-right button** (or key <kbd>I</kbd>): opens and closes the **status panel** with the six positions (counts and normalised), the profile, whether anything is moving, the encoder origin and the last command with its verdict and reason. <kbd>Esc</kbd> closes it. The browser remembers whether you left it open. With the panel open, the hand shifts into the free space. On phones the panel slides up from the bottom.
+- **Bottom centre:** a brief notice for each command (line, gesture, duration). It hides itself after 2.6 s; rejections and profile warnings stay 7 s with an amber bar.
+- **Top-right button** (or key <kbd>I</kbd>): opens a small **settings** popover with two controls. <kbd>Esc</kbd> or a click outside closes it; the browser remembers how you left it.
 - **Mouse:** drag to orbit, wheel to zoom, double-click to return to the starting view. The camera never moves on its own.
 
-### The hand
+The full state (positions, profile, calibration, last command) lives at `GET /api/state`, not on screen.
 
-- A realistic right hand seen from the back in three-quarter view, standing on its wrist with a soft floor shadow.
-- **Skin:** the mesh is generated on page load from a distance field (round cones and ellipsoids smoothly blended): a palm with a metacarpal arch, thenar and hypothenar eminences, finger webs, knuckles, pads and a wrist. A physical material with a soft sheen, apparent light scattering at the edges, pores, flexion creases on fingers, palm and wrist, knuckle wrinkles and ambient occlusion.
-- **Nails** with a lunula and a free edge.
-- **Lighting:** studio lighting (room environment) plus a key light that casts the shadow.
-- **Joints:** hierarchy hand → finger → proximal → intermediate → distal. Each phalanx rotates at its joint, and its ends are spheres centred on it, so the skin never opens when flexing. D0 rotates about **Y** (opposition); the thumb has D1_P and D1_D, no intermediate joint. The thumb placement was tuned numerically so the pads meet in `Y` (OK, thumb-index) and `P` (PINCH, thumb-middle).
-- **State colours on the skin:** the moving finger takes a soft pink tint, and a finger outside the profile turns amber. A switch in the panel turns this off.
+### The two hand styles
 
-URL parameters:
+The **Hand style** switch moves between them without touching the kinematics: same pivots, same angles, same pad contacts. Each style is built the first time it is chosen; after that, switching is instant.
+
+| | Human | Robotic |
+|---|---|---|
+| Shape | Mesh generated on load from a distance field (`sdf.js`): palm with a metacarpal arch, thenar and hypothenar eminences, finger webs, knuckles, pads and a wrist. | Tapered shells with a joint block and a visible pin, a dorsal push rod, linkage plates, rubber grip pads and rounded tips. |
+| Palm | Skin with flexion creases, pores, knuckle wrinkles and ambient occlusion; nails with a lunula and a free edge. | Chassis with a bolted cover and vents, knuckle mounts with axles, a palm plate with grip pads, the thumb's opposition servo and a bolted wrist flange. |
+| Colour | Skin tone. | White (shells) and navy (frame), with black axles and pads. |
+| Cost | ~1 s to build, ~230,000 triangles. | ~0.1 s, ~19,000 triangles (lighter). |
+
+The **Tint the moving finger** switch is still there: with it on, the moving finger takes a pink tint and one outside the profile turns amber. Turn it off and the hand always keeps its own colour.
+
+### URL parameters
 
 | Parameter | Effect |
 |---|---|
+| `?style=robot` | Start with the robotic hand (default `human`). |
 | `?view=palm` / `?view=side` | Start from the palm or the side (default `back`: the back of the hand). |
 | `?hand=left` | Left hand (same geometry, X mirrored). |
 | `?lang=en` | English UI. |
-| `?quality=0.7` | Lighter mesh for slow machines (1 = normal). |
+| `?quality=0.7` | Lighter human mesh for slow machines (1 = normal). |
 
-The page only draws when something changes (camera, pose or tint), so it uses no GPU at rest. Building the mesh takes about 1 s.
+### Inside the hand
+
+- Hierarchy hand → finger → proximal → intermediate → distal. Each phalanx rotates at its joint. D0 rotates about **Y** (opposition); the thumb has D1_P and D1_D, no intermediate joint. The thumb placement was tuned numerically so the pads meet in `Y` (OK, thumb-index) and `P` (PINCH, thumb-middle).
+- In the human style, each phalanx's ends are spheres centred on the joint, so the skin never opens when flexing.
+- Studio lighting plus a key light casting a soft floor shadow.
+- The page only draws when something changes (camera, pose or tint), so it uses no GPU at rest.
 
 Three.js 0.186 is bundled in `static/vendor/three` (MIT licence): the page works offline. No external models, textures or fonts are used.
 
-> **Change from the original brief.** At your request, the hand is no longer navy and shadowless: it is skin-coloured, with a soft floor shadow and a short wrist stub so it looks natural (there is still no arm or armband). The fixed palette still applies to the whole interface, and pink and amber still mark motion and warnings. There is still no dark mode.
+> **Changes from the original brief**, at your request: the human hand is skin-coloured, with a soft shadow and a short wrist stub (there is still no arm or armband), and the status panel has been taken off the screen. The fixed palette still applies to the interface and to the robotic hand; pink and amber still mark motion and warnings. There is still no dark mode.
 
 ---
 
@@ -352,9 +364,12 @@ app/
   main.py        FastAPI: routes, WebSocket, origin guard
 static/
   index.html     single page
-  js/app.js      WebSocket, scene, folding panel and animation loop
-  js/hand.js     anatomy, skin and nails; joint hierarchy
-  js/sdf.js      distance fields and meshing (surface nets)
+  js/app.js        WebSocket, scene, settings and animation loop
+  js/hand.js       joint skeleton, shared by both styles
+  js/anatomy.js    hand sizes and reference frame
+  js/style-human.js  skin, creases and nails
+  js/style-robot.js  shells, axles and pads
+  js/sdf.js        distance fields and meshing (surface nets)
   js/motion.js   per-actuator interpolation (same curve as motion.py)
   css/style.css  fixed palette
   vendor/three/  bundled Three.js

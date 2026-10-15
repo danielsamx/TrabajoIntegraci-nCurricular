@@ -296,36 +296,48 @@ El simulador guarda cuentas «absolutas» desde el origen de fábrica. El encód
 
 ## La escena
 
-La pantalla es solo la mano. Todo lo demás está plegado:
+La pantalla es solo la mano. No hay panel lateral:
 
 - **Arriba a la izquierda:** el nombre y un punto de conexión (marino = conectado, ámbar parpadeando = sin conexión). Mientras algo se mueve aparece una etiqueta rosa con las letras en curso.
-- **Abajo, en el centro:** un aviso breve con cada comando (línea, gesto, duración). Se oculta solo a los 2,6 s; los rechazos se quedan 7 s con una barra ámbar y el botón del panel muestra un punto ámbar.
-- **Botón arriba a la derecha** (o tecla <kbd>I</kbd>): abre y cierra el **panel de estado** con las seis posiciones (cuentas y normalizadas), el perfil, si hay movimiento, el origen de encóderes y el último comando con su veredicto y motivo. <kbd>Esc</kbd> lo cierra. El navegador recuerda si lo dejaste abierto. Con el panel abierto, la mano se desplaza hacia el espacio libre. En el móvil el panel sale desde abajo.
+- **Abajo, en el centro:** un aviso breve con cada comando (línea, gesto, duración). Se oculta solo a los 2,6 s; los rechazos y los avisos de perfil se quedan 7 s con una barra ámbar.
+- **Botón arriba a la derecha** (o tecla <kbd>I</kbd>): abre unos **ajustes** pequeños con dos controles. <kbd>Esc</kbd> o un clic fuera los cierran; el navegador recuerda cómo los dejaste.
 - **Ratón:** arrastrar para orbitar, rueda para acercar, doble clic para volver a la vista inicial. La cámara nunca se mueve sola.
 
-### La mano
+El estado completo (posiciones, perfil, calibración, último comando) está en `GET /api/state`, no en pantalla.
 
-- Mano derecha realista vista por el dorso en tres cuartos, de pie sobre la muñeca, con sombra suave en el suelo.
-- **Piel:** la malla se genera al cargar la página a partir de un campo de distancias (conos redondeados y elipsoides unidos con suavidad): palma con arco metacarpiano, eminencias tenar e hipotenar, membranas entre los dedos, nudillos, yemas y muñeca. Material físico con brillo tenue, dispersión aparente en los bordes, poros, pliegues de flexión en dedos, palma y muñeca, arrugas en los nudillos y oclusión ambiental.
-- **Uñas** con lúnula y borde libre.
-- **Luces:** iluminación de estudio (entorno de habitación) más una luz principal con sombra.
-- **Articulaciones:** jerarquía mano → dedo → proximal → intermedia → distal. Cada falange rota en su articulación, y sus extremos son esferas centradas en ella, así que la piel no se abre al flexionar. D0 gira sobre **Y** (oposición); el pulgar tiene D1_P y D1_D, sin intermedia. La posición del pulgar se ajustó numéricamente para que las yemas se toquen en `Y` (OK, pulgar-índice) y en `P` (PINCH, pulgar-medio).
-- **Colores de estado sobre la piel:** el dedo que se mueve se tiñe de rosa suave y el que queda fuera del perfil, de ámbar. Se desactiva con el interruptor del panel.
+### Los dos estilos de mano
 
-Parámetros de la URL:
+El interruptor **Estilo de la mano** cambia entre las dos sin tocar la cinemática: los mismos pivotes, los mismos ángulos y los mismos contactos de yema. Cada estilo se construye la primera vez que se elige y luego el cambio es instantáneo.
+
+| | Humana | Robótica |
+|---|---|---|
+| Forma | Malla generada al cargar desde un campo de distancias (`sdf.js`): palma con arco metacarpiano, eminencias tenar e hipotenar, membranas, nudillos, yemas y muñeca. | Carcasas cónicas con bloque de articulación y pasador a la vista, barra de empuje dorsal, placas de varillaje, yemas con almohadilla de goma y punta redondeada. |
+| Palma | Piel con pliegues de flexión, poros, arrugas en los nudillos y oclusión ambiental; uñas con lúnula y borde libre. | Chasis con tapa atornillada y rejillas, soportes de nudillo con eje, placa palmar con almohadillas de agarre, servo de oposición del pulgar y brida de muñeca con tornillos. |
+| Color | Tono de piel. | Blanco (carcasa) y marino (estructura), con ejes y almohadillas en negro. |
+| Coste | ~1 s de generación, ~230 000 triángulos. | ~0,1 s, ~19 000 triángulos (más ligera). |
+
+El interruptor **Teñir el dedo que se mueve** sigue estando: con él, el dedo en movimiento se tiñe de rosa y el que queda fuera del perfil, de ámbar. Al desactivarlo, la mano se ve siempre con su color.
+
+### Parámetros de la URL
 
 | Parámetro | Efecto |
 |---|---|
+| `?style=robot` | Empezar con la mano robótica (por defecto, `human`). |
 | `?view=palm` / `?view=side` | Vista inicial por la palma o de lado (por defecto, `back`: el dorso). |
 | `?hand=left` | Mano izquierda (misma geometría con X invertida). |
 | `?lang=en` | Interfaz en inglés. |
-| `?quality=0.7` | Malla más ligera para equipos lentos (1 = normal). |
+| `?quality=0.7` | Malla humana más ligera para equipos lentos (1 = normal). |
 
-La página solo dibuja cuando algo cambia (cámara, pose o tinte); en reposo no gasta GPU. La malla tarda alrededor de 1 s en generarse.
+### La mano por dentro
+
+- Jerarquía mano → dedo → proximal → intermedia → distal. Cada falange rota en su articulación. D0 gira sobre **Y** (oposición); el pulgar tiene D1_P y D1_D, sin intermedia. La posición del pulgar se ajustó numéricamente para que las yemas se toquen en `Y` (OK, pulgar-índice) y en `P` (PINCH, pulgar-medio).
+- En el estilo humano, los extremos de cada falange son esferas centradas en la articulación, así que la piel no se abre al flexionar.
+- Iluminación de estudio más una luz principal con sombra suave en el suelo.
+- La página solo dibuja cuando algo cambia (cámara, pose o tinte); en reposo no gasta GPU.
 
 Three.js 0.186 va incluido en `static/vendor/three` (licencia MIT): la página funciona sin Internet. No se usan modelos, texturas ni fuentes externas.
 
-> **Cambio respecto al encargo original.** A petición tuya, la mano ya no es marina ni sin sombras: es de color piel, con sombra suave en el suelo y un tramo corto de muñeca para que se vea natural (sigue sin haber brazo ni brazalete). La paleta fija se mantiene en toda la interfaz, y el rosa y el ámbar siguen marcando movimiento y avisos. Sigue sin haber modo oscuro.
+> **Cambios respecto al encargo original**, a petición tuya: la mano humana es de color piel, con sombra suave y un tramo corto de muñeca (sigue sin haber brazo ni brazalete), y el panel de estado se ha retirado de la pantalla. La paleta fija se mantiene en la interfaz y en la mano robótica; el rosa y el ámbar siguen marcando movimiento y avisos. Sigue sin haber modo oscuro.
 
 ---
 
@@ -352,9 +364,12 @@ app/
   main.py        FastAPI: rutas, WebSocket, guardián de origen
 static/
   index.html     una sola página
-  js/app.js      WebSocket, escena, panel plegable y bucle de animación
-  js/hand.js     anatomía, piel y uñas; jerarquía de articulaciones
-  js/sdf.js      campos de distancia y mallado (surface nets)
+  js/app.js        WebSocket, escena, ajustes y bucle de animación
+  js/hand.js       esqueleto articulado, común a los dos estilos
+  js/anatomy.js    medidas de la mano y marco de referencia
+  js/style-human.js  piel, pliegues y uñas
+  js/style-robot.js  carcasas, ejes y almohadillas
+  js/sdf.js        campos de distancia y mallado (surface nets)
   js/motion.js   interpolación por actuador (misma curva que motion.py)
   css/style.css  paleta fija
   vendor/three/  Three.js incluido

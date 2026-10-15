@@ -212,7 +212,8 @@ def test_index_served(client):
 def test_static_files_are_revalidated(client):
     # Evita mezclar HTML nuevo con JS/CSS viejo tras actualizar.
     # Avoids mixing new HTML with stale JS/CSS after an update.
-    for path in ("/static/js/app.js", "/static/js/hand.js", "/static/js/sdf.js", "/static/css/style.css"):
+    for path in ("/static/js/app.js", "/static/js/hand.js", "/static/js/sdf.js", "/static/js/anatomy.js",
+                 "/static/js/style-human.js", "/static/js/style-robot.js", "/static/css/style.css"):
         r = client.get(path)
         assert r.status_code == 200, path
         assert r.headers["cache-control"] == "no-cache", path
