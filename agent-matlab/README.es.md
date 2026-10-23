@@ -3,7 +3,7 @@
 > English: [README.md](README.md)
 
 Lee 8 canales de EMG de un **Myo Armband**, envía cada ventana de 200 ms (texto + imagen) a
-un **LLM en LM Studio**, y manda el comando resultante a la **prótesis** por HTTP.
+un **LLM en LM Studio**, y manda el comando resultante a la **prótesis** por HTTP, puerto serie o Bluetooth.
 La única fuente es el Myo. No hay umbrales ni calibración.
  Todo lo que ocurre se imprime en la consola.
 
@@ -37,9 +37,10 @@ Colores: azul `#002A5C` (botones y texto), rojo `#EE2E24` (Detener y alertas), a
     o el motivo del fallo).
   - **Servidor LLM:** IP, puertos, timeout… **Modelo** es una lista: **Cargar** hace
     `GET /v1/models` al servidor y la rellena con los modelos disponibles. **Probar conexión**.
-  - **Prótesis:** interruptor **HTTP / Serial**. En HTTP: host, puerto y ruta. En serie:
-    puerto (lista con ↻ para actualizar), baudios y fin de línea. Además timeout, comando de
-    reposo y comando al detener, y **Probar conexión**.
+  - **Prótesis:** comunicación **HTTP**, **Puerto serie** o **Bluetooth**. En HTTP: host, puerto
+    y ruta. En serie: puerto (↻ actualiza la lista) y baudios. En Bluetooth: nombre del dispositivo
+    (↻ busca los cercanos) y canal. Además timeout, fin de línea, comando de reposo, comando al
+    detener y **Probar conexión**.
   - **Guardar configuración** escribe los cambios en `config/agent_config.m`.
 - **Dashboard:** indicadores (ciclo, comando, confianza, decisión, latencia y duración), los 8 canales individuales (EMG crudo de los últimos 2 s), las 3
   imágenes (cada una indica si se envía al LLM y tiene un botón **PNG** para guardarla en
@@ -82,11 +83,27 @@ La opción **Bluetooth del PC** usa la función `ble` de MATLAB con el Bluetooth
 (no con el adaptador). Necesita el Bluetooth del PC encendido, el nombre exacto del brazalete
 (p. ej. `MYO.94`) y también Myo Connect cerrado.
 
-### Prótesis por puerto serie
+### Prótesis por puerto serie o Bluetooth
 
 Con `cfg.prosthesis.mode = 'serial'` se envía la letra del comando seguida del fin de línea
 (`LF`, `CR` o `CR/LF`) por `cfg.prosthesis.serial_port` a `cfg.prosthesis.baud_rate` baudios.
 El puerto se abre una vez y se cierra al terminar la sesión o al cerrar la interfaz.
+
+Con `cfg.prosthesis.mode = 'bluetooth'` se usa Bluetooth clásico (SPP) con la función `bluetooth`
+de MATLAB (R2020b+, sin toolboxes), como hace la app *Serial Bluetooth Terminal* del manual de la
+mano Handi EPN V3. Nombre por defecto: `Handi EPN V3`, canal `1`.
+
+1. El PC necesita Bluetooth propio o un adaptador USB Bluetooth. El adaptador del Myo (BLED112)
+   **no sirve**: solo hace Bluetooth Low Energy y además está ocupado con el Myo.
+2. Encienda la mano y emparéjela en Configuración de Windows > Bluetooth ("Handi EPN V3").
+   Desconéctela del móvil: el ESP32 acepta una sola conexión.
+3. En la interfaz: Comunicación = Bluetooth, ↻ para buscarla y **Probar conexión**.
+
+Al pulsar **Iniciar** se conecta antes del primer ciclo; si no puede, la sesión no arranca y se
+explica el motivo. Alternativa equivalente: al emparejarla, Windows crea un puerto COM
+("Puerto serie estándar a través de vínculo Bluetooth"); ese COM funciona con la opción Serie.
+
+Según el manual, `S` **detiene los motores** (no mueve la mano), `O` abre y `C` cierra.
 
 **Ctrl+C** detiene el agente; al salir siempre se envía el comando de reposo (`S`) a la prótesis.
 La consola completa queda guardada en `logs/sesion_<fecha>.txt`.
@@ -125,7 +142,7 @@ processing/image_kinds.m       nombres y descripciones de las 3 imágenes
 llm/send_input_llm.m           petición HTTP al LLM
 llm/parse_llm_response.m       extrae y valida el JSON de la respuesta
 llm/list_llm_models.m          GET /v1/models: modelos del servidor (Cargar y comprobación al iniciar)
-prosthesis/send_prosthesis_command.m   envío a la prótesis por HTTP o puerto serie
+prosthesis/send_prosthesis_command.m   envío a la prótesis por HTTP, puerto serie o Bluetooth
 utils/smooth_command.m         evita cambios bruscos entre ciclos
 utils/log_msg.m                línea de consola con hora
 utils/read_text.m, write_text.m   leer y guardar texto en UTF-8

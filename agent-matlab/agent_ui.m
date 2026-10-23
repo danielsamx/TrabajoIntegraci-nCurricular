@@ -132,18 +132,22 @@ classdef agent_ui < handle
             place(obj.button(g, 'Probar conexión', obj.NAVY, @(~, ~) obj.on_test_llm()), 8, [1 2]);
 
             g = obj.section(side, 3, 'Prótesis', 5, true);
-            obj.add_row(g, 2, {{'prosthesis.mode', 'Comunicación', 'switch', {'HTTP', 'Serial'}}});
+            obj.add_row(g, 2, {{'prosthesis.mode', 'Comunicación', 'choice', ...
+                {{'HTTP', 'Puerto serie', 'Bluetooth'}, {'http', 'serial', 'bluetooth'}}}});
             obj.mode_grids.http = obj.subrows(g, [3 4]);            % filas solo para HTTP
             obj.add_row(obj.mode_grids.http, 1, {{'prosthesis.host', 'Host', 'text', []}});
             obj.add_row(obj.mode_grids.http, 2, {{'prosthesis.port', 'Puerto', 'numeric', []}, ...
                 {'prosthesis.endpoint', 'Ruta', 'text', []}});
             obj.mode_grids.serial = obj.subrows(g, [3 4]);          % filas solo para puerto serie
             obj.add_row(obj.mode_grids.serial, 1, {{'prosthesis.serial_port', 'Puerto serie', 'serial', []}});
-            obj.add_row(obj.mode_grids.serial, 2, {{'prosthesis.baud_rate', 'Baudios', 'numeric', []}, ...
-                {'prosthesis.terminator', 'Fin', 'dropdown', {'LF', 'CR', 'CR/LF'}}});
+            obj.add_row(obj.mode_grids.serial, 2, {{'prosthesis.baud_rate', 'Baudios', 'numeric', []}});
+            obj.mode_grids.prosthesis_bt = obj.subrows(g, [3 4]);   % filas solo para Bluetooth
+            obj.add_row(obj.mode_grids.prosthesis_bt, 1, {{'prosthesis.bt_name', 'Nombre BT', 'btname', []}});
+            obj.add_row(obj.mode_grids.prosthesis_bt, 2, {{'prosthesis.bt_channel', 'Canal', 'numeric', []}});
             obj.add_row(g, 5, {{'prosthesis.timeout', 'Timeout (s)', 'numeric', []}, ...
-                {'rest_command', 'Reposo', 'text', []}});
-            obj.add_row(g, 6, {{'prosthesis.safe_command', 'Al detener', 'text', []}});
+                {'prosthesis.terminator', 'Fin', 'dropdown', {'LF', 'CR', 'CR/LF'}}});
+            obj.add_row(g, 6, {{'rest_command', 'Reposo', 'text', []}, ...
+                {'prosthesis.safe_command', 'Al detener', 'text', []}});
             place(obj.button(g, 'Probar conexión', obj.NAVY, @(~, ~) obj.on_test_prosthesis()), 7, [1 2]);
 
             foot = uigridlayout(side, [2 1], 'RowHeight', {34, '1x'}, 'Padding', [0 4 0 0], ...
@@ -211,15 +215,16 @@ classdef agent_ui < handle
                     c = uieditfield(parent, 'text', 'Value', num2str(value));
                 case 'check'
                     c = uicheckbox(parent, 'Text', '', 'Value', value);
-                case 'switch'
-                    c = uiswitch(parent, 'slider', 'Items', options, ...
-                        'Value', options{strcmpi(options, value)}, ...
-                        'ValueChangedFcn', @(~, ~) obj.update_mode());
                 case 'model'                                        % lista de modelos + botón Cargar
                     holder = uigridlayout(parent, [1 2], 'ColumnWidth', {'1x', 66}, 'Padding', [0 0 0 0], ...
                         'ColumnSpacing', 4, 'BackgroundColor', obj.WHITE);
                     c = uidropdown(holder, 'Editable', 'on', 'Items', {value}, 'Value', value);
                     obj.button(holder, 'Cargar', obj.NAVY, @(~, ~) obj.on_load_models(c));
+                case 'btname'                                       % dispositivos Bluetooth + buscar
+                    holder = uigridlayout(parent, [1 2], 'ColumnWidth', {'1x', 28}, 'Padding', [0 0 0 0], ...
+                        'ColumnSpacing', 4, 'BackgroundColor', obj.WHITE);
+                    c = uidropdown(holder, 'Editable', 'on', 'Items', {value}, 'Value', value);
+                    obj.button(holder, '↻', obj.NAVY, @(~, ~) obj.on_find_bluetooth(c));
                 case {'folder', 'serial'}
                     holder = uigridlayout(parent, [1 2], 'ColumnWidth', {'1x', 28}, 'Padding', [0 0 0 0], ...
                         'ColumnSpacing', 4, 'BackgroundColor', obj.WHITE);
@@ -232,10 +237,10 @@ classdef agent_ui < handle
                         obj.button(holder, '↻', obj.NAVY, @(~, ~) set(c, 'Items', serial_ports(c.Value, auto)));
                     end
             end
-            if ~any(strcmp(kind, {'check', 'switch'}))
+            if ~strcmp(kind, 'check')
                 c.FontColor = obj.NAVY;                             % texto de los campos en azul
             end
-            if ~any(strcmp(kind, {'folder', 'serial', 'model'}))
+            if ~any(strcmp(kind, {'folder', 'serial', 'model', 'btname'}))
                 holder = c;                                         % se coloca el propio control
             end
             obj.register(spec, c);
@@ -411,10 +416,11 @@ classdef agent_ui < handle
         end
 
         function update_mode(obj)
-            % Muestra solo las filas que aplican: HTTP o serie, adaptador USB o Bluetooth del PC.
-            serial = strcmpi(obj.controls.prosthesis_mode.Value, 'Serial');
-            obj.mode_grids.http.Visible = ~serial;
-            obj.mode_grids.serial.Visible = serial;
+            % Muestra solo las filas que aplican: HTTP, serie o Bluetooth; adaptador USB o Bluetooth del PC.
+            mode = obj.controls.prosthesis_mode.Value;              % 'http', 'serial' o 'bluetooth'
+            obj.mode_grids.http.Visible = strcmp(mode, 'http');
+            obj.mode_grids.serial.Visible = strcmp(mode, 'serial');
+            obj.mode_grids.prosthesis_bt.Visible = strcmp(mode, 'bluetooth');
             dongle = strcmp(obj.controls.myo_link.Value, 'dongle');
             obj.mode_grids.dongle.Visible = dongle;
             obj.mode_grids.bluetooth.Visible = ~dongle;
@@ -436,8 +442,6 @@ classdef agent_ui < handle
                 value = obj.controls.(strrep(path, '.', '_')).Value; % valor en la UI
                 if strcmp(kind, 'vector')
                     value = sscanf(value, '%f')';                   % '1234 1235' -> [1234 1235]
-                elseif strcmp(kind, 'switch')
-                    value = lower(value);                           % 'HTTP' -> 'http'
                 end
                 cfg = set_path(cfg, path, value);
             end
@@ -558,7 +562,7 @@ classdef agent_ui < handle
                 obj.closing = true;                                 % on_start cerrará la ventana
                 obj.running = false;
             else
-                send_prosthesis_command('close');                   % libera el puerto serie, si se abrió
+                send_prosthesis_command('close');                   % libera el puerto serie o Bluetooth
                 delete(obj.fig);
             end
         end
@@ -682,17 +686,61 @@ classdef agent_ui < handle
         end
 
         function on_test_prosthesis(obj)
-            % Envía el comando de reposo por HTTP o por puerto serie, según el interruptor.
+            % Envía el comando de reposo por la comunicación elegida (HTTP, serie o Bluetooth).
             cfg = obj.read_controls();
-            ok = send_prosthesis_command(cfg.prosthesis, cfg.rest_command);
-            if strcmp(cfg.prosthesis.mode, 'serial')
-                target = sprintf('%s a %d baudios', cfg.prosthesis.serial_port, cfg.prosthesis.baud_rate);
-            else
-                target = sprintf('http://%s:%d%s', cfg.prosthesis.host, cfg.prosthesis.port, cfg.prosthesis.endpoint);
+            p = cfg.prosthesis;
+            progress = uiprogressdlg(obj.fig, 'Title', 'Prótesis', 'Message', 'Conectando...', 'Indeterminate', 'on');
+            try
+                if ~strcmp(p.mode, 'http')
+                    send_prosthesis_command(p, 'open');             % conecta (falla con el motivo)
+                end
+                ok = send_prosthesis_command(p, cfg.rest_command);
+                close(progress);
+                switch p.mode
+                    case 'serial'
+                        target = sprintf('%s a %d baudios', p.serial_port, p.baud_rate);
+                    case 'bluetooth'
+                        target = sprintf('Bluetooth "%s"', p.bt_name);
+                    otherwise
+                        target = sprintf('http://%s:%d%s', p.host, p.port, p.endpoint);
+                end
+                message = sprintf('%s -> %s: %s (detalle en la consola)', cfg.rest_command, target, ...
+                    ternary(ok, 'enviado', 'fallo'));
+                uialert(obj.fig, message, 'Prótesis', 'Icon', ternary(ok, 'success', 'error'));
+            catch err
+                close(progress);
+                uialert(obj.fig, err.message, 'No se pudo conectar con la prótesis', 'Icon', 'error');
             end
-            message = sprintf('%s -> %s: %s (detalle en la consola)', cfg.rest_command, target, ...
-                ternary(ok, 'enviado', 'fallo'));
-            uialert(obj.fig, message, 'Prótesis', 'Icon', ternary(ok, 'success', 'error'));
+        end
+
+        function on_find_bluetooth(obj, field)
+            % Botón ↻ de Nombre BT: busca dispositivos Bluetooth clásicos cercanos o emparejados.
+            progress = uiprogressdlg(obj.fig, 'Title', 'Bluetooth', ...
+                'Message', 'Buscando dispositivos Bluetooth (unos 15 s)...', 'Indeterminate', 'on');
+            try
+                found = bluetoothlist('Timeout', 15);               % tabla: Name, Address, Channel, Status
+                close(progress);
+                log_msg('UI', 'Dispositivos Bluetooth encontrados: %d', height(found));
+                disp(found);                                        % la tabla completa en la consola
+                names = cellstr(string(found.Name));
+                names = unique(names(~cellfun(@isempty, names)), 'stable');
+                if isempty(names)
+                    uialert(obj.fig, 'No se encontró ningún dispositivo. Encienda la prótesis y vuelva a buscar.', ...
+                        'Bluetooth', 'Icon', 'warning');
+                    return;
+                end
+                current = field.Value;
+                field.Items = names;                                % opciones = dispositivos encontrados
+                if any(strcmp(names, current))
+                    field.Value = current;                          % conserva el elegido si aparece
+                end
+                obj.note(sprintf('%d dispositivos Bluetooth encontrados.', numel(names)));
+            catch err
+                close(progress);
+                uialert(obj.fig, sprintf(['No se pudo buscar: %s\n\nEl PC necesita Bluetooth propio o un ' ...
+                    'adaptador USB Bluetooth (el adaptador del Myo no sirve para esto).'], err.message), ...
+                    'Bluetooth', 'Icon', 'error');
+            end
         end
 
         function note(obj, text)

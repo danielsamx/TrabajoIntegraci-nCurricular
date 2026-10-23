@@ -44,8 +44,12 @@ classdef agent_session < handle
 
             try
                 obj.check_llm();                                    % sin servidor LLM no se arranca
+                if ~strcmp(cfg.prosthesis.mode, 'http')             % serie o Bluetooth: conectar ya
+                    send_prosthesis_command(cfg.prosthesis, 'open'); % falla con el motivo si no conecta
+                end
                 obj.device = myo_interface(cfg);                    % conecta el Myo
             catch err
+                send_prosthesis_command('close');                   % libera la prótesis si llegó a abrirse
                 diary('off');                                       % cierra el registro antes de avisar
                 rethrow(err);                                       % la UI o la consola muestran el motivo
             end
@@ -177,7 +181,7 @@ classdef agent_session < handle
             safe = obj.cfg.prosthesis.safe_command;                 % comando de reposo
             log_msg('MAIN', 'Fin: se envía el comando de reposo %s', safe);
             send_prosthesis_command(obj.cfg.prosthesis, safe);      % deja la mano en reposo
-            send_prosthesis_command('close');                       % libera el puerto serie, si se usó
+            send_prosthesis_command('close');                       % libera el puerto serie o Bluetooth
             obj.device.close();                                     % libera el Bluetooth
             diary('off');                                           % cierra el registro
         end
@@ -198,6 +202,9 @@ log_msg('CONFIG', 'LLM: http://%s:[%s]%s | modelo %s | timeout %.2f s', cfg.llm.
 if strcmp(cfg.prosthesis.mode, 'serial')
     log_msg('CONFIG', 'Prótesis: serie %s a %d baudios (fin de línea %s)', cfg.prosthesis.serial_port, ...
         cfg.prosthesis.baud_rate, cfg.prosthesis.terminator);
+elseif strcmp(cfg.prosthesis.mode, 'bluetooth')
+    log_msg('CONFIG', 'Prótesis: Bluetooth "%s" canal %d (fin de línea %s)', cfg.prosthesis.bt_name, ...
+        cfg.prosthesis.bt_channel, cfg.prosthesis.terminator);
 else
     log_msg('CONFIG', 'Prótesis: http://%s:%d%s', cfg.prosthesis.host, cfg.prosthesis.port, ...
         cfg.prosthesis.endpoint);

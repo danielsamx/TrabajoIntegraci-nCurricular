@@ -59,7 +59,7 @@ cfg.llm.stop = {['}' newline], ['}' char(13) newline]};     % cortar al cerrar e
 cfg.llm.prompt_file = fullfile(root, 'config', 'system_es.txt'); % system prompt (o system_en.txt)
 
 %% Prótesis
-cfg.prosthesis.mode = 'http';                               % comunicación: 'http' o 'serial'
+cfg.prosthesis.mode = 'http';                               % comunicación: 'http', 'serial' o 'bluetooth'
 cfg.prosthesis.host = '100.73.114.17';                      % IP del servidor de la prótesis
 cfg.prosthesis.port = 8000;                                 % puerto
 cfg.prosthesis.endpoint = '/api/command';                   % ruta del POST
@@ -67,6 +67,8 @@ cfg.prosthesis.timeout = 0.5;                               % s de espera por co
 cfg.prosthesis.serial_port = 'COM3';                        % puerto serie (Windows: COMx)
 cfg.prosthesis.baud_rate = 115200;                          % velocidad del puerto serie
 cfg.prosthesis.terminator = 'LF';                           % fin de línea: 'LF', 'CR' o 'CR/LF'
+cfg.prosthesis.bt_name = 'Handi EPN V3';                    % nombre Bluetooth de la mano (manual Handi EPN V3)
+cfg.prosthesis.bt_channel = 1;                              % canal SPP del ESP32 (normalmente 1)
 cfg.prosthesis.safe_command = 'S';                          % comando de reposo al terminar
 
 %% Suavizado del comando

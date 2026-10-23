@@ -3,7 +3,9 @@
 > Español: [README.es.md](README.es.md)
 
 Reads 8 EMG channels from a **Myo Armband**, sends each 200 ms window (text + image) to an
-**LLM in LM Studio**, and posts the resulting command to the **prosthesis** over HTTP.
+**LLM in LM Studio**, and sends the resulting command to the **prosthesis** over HTTP, serial or
+Bluetooth Classic (SPP, MATLAB `bluetooth`, default device `Handi EPN V3`; needs a PC Bluetooth radio,
+the Myo's BLED112 dongle cannot be used).
 The Myo is the only source. No thresholds and no calibration: cosine similarity (`SIM`)
 picks the gesture and the distance to rest vs that gesture (`DIST`) decides rest (`S`). Everything is printed to the console.
 

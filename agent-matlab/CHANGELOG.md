@@ -6,6 +6,20 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.7.0] - 2026-10-23
+
+### Added / Añadido
+- Comunicación con la prótesis por **Bluetooth clásico (SPP)** con la función `bluetooth` de MATLAB
+  (R2020b+, sin toolboxes). Configuración: `cfg.prosthesis.bt_name` (por defecto `Handi EPN V3`,
+  según el manual de la mano) y `cfg.prosthesis.bt_channel` (1).
+- UI: Comunicación = HTTP / Puerto serie / Bluetooth; botón ↻ que busca dispositivos Bluetooth.
+- Las conexiones serie y Bluetooth se abren al iniciar la sesión; si fallan, no arranca y se
+  explica el motivo (Bluetooth del PC, emparejamiento, móvil conectado a la mano).
+
+### Changed / Cambiado
+- La respuesta de la prótesis por serie/Bluetooth se lee de una vez (sin bucles que puedan colgarse).
+- Fin de línea compartido por serie y Bluetooth, junto al timeout.
+
 ## [2.6.1] - 2026-10-23
 
 ### Removed / Eliminado
