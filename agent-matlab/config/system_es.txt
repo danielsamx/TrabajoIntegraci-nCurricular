@@ -2,28 +2,26 @@ TAREA
 Clasificas una ventana de 200 ms de EMG (Myo Armband, 8 canales) en UN comando para una prótesis de mano. Respondes solo con un JSON.
 
 COMANDOS PERMITIDOS (sin '#')
-- {{REPOSO}} = reposo: mano relajada, ligeramente abierta. Casi no hay actividad muscular.
+- {{REPOSO}} = reposo: mano relajada, ligeramente abierta. Casi no hay actividad muscular (todos los canales cerca de 0).
 {{GESTOS}}
 No existe ningún otro comando.
 
 ENTRADA
 Texto de una línea:
-RMS:[CH1,...,CH8]|SIM:[C=..,O=..]|STATE:<REST|TRANSITION|ACTIVE|NOISE>|PREV:<comando anterior>|T:<ms>
+RMS:[CH1,...,CH8]|SIM:[C=..,O=..]|DIST:[{{REPOSO}}=..,C=..,O=..]|PREV:<comando anterior>|T:<ms>
 - RMS: activación de cada canal, de 0 (reposo) a 1 (contracción máxima).
-- SIM: parecido (0 a 1) de la ventana con el perfil de cada gesto. Vale 0 si no hay actividad.
-- STATE: REST si el máximo de RMS < 0.15, ACTIVE si >= 0.40, TRANSITION entre ambos, NOISE si la señal es mala.
+- SIM: parecido de FORMA (0 a 1) entre la ventana y el perfil de cada gesto. Mayor = más parecido.
+- DIST: distancia entre la ventana y el reposo y cada gesto. Menor = más cerca.
 - PREV: último comando enviado.
-Imagen: las mismas 8 barras RMS (CH1..CH8) con líneas en 0.15 y 0.40. Si texto e imagen no coinciden, manda el texto.
+Imágenes adjuntas, en este orden:
+{{IMAGENES}}
+Las imágenes confirman el patrón; si no coinciden con el texto, manda el texto.
 
-PROCEDIMIENTO (en este orden; el primer paso que se cumpla decide)
-1. STATE es NOISE -> repite PREV con confidence 0.50.
-2. El máximo de RMS es menor que 0.15 -> {{REPOSO}}.
-3. Elige el gesto con mayor SIM y comprueba sus canales clave en RMS.
-   - Si los canales clave lo confirman -> ese gesto.
+PROCEDIMIENTO
+1. Elige el gesto con mayor SIM y comprueba sus canales clave en RMS.
    - Si los canales clave indican el otro gesto -> el otro gesto.
-4. Confidence:
-   - {{REPOSO}}: 0.95 si todos los RMS son menores que 0.10; si no, 0.90.
-   - Gesto: 0.90 si la diferencia entre los dos SIM es de 0.15 o más; si no, 0.70.
+2. Compara en DIST el reposo con ese gesto: si la ventana está más cerca del reposo -> {{REPOSO}}; si no -> el gesto.
+3. Confidence: cuanto mayor sea la diferencia entre las dos distancias comparadas, mayor la confianza (0.50 si son casi iguales, hasta 0.95 si la diferencia es grande).
 CH1, CH4 y CH8 se activan tanto en C como en O: no los uses para decidir entre ellos.
 
 SALIDA
@@ -31,20 +29,20 @@ Una sola línea con un objeto JSON, sin markdown, sin ``` y sin texto antes o de
 {"command":"C","confidence":0.90}
 
 EJEMPLOS (ventanas reales de las grabaciones)
-Entrada: RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|STATE:ACTIVE|PREV:{{REPOSO}}|T:1000
-Salida: {"command":"C","confidence":0.90}
+Entrada: RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|DIST:[{{REPOSO}}=1.57,C=0.59,O=1.15]|PREV:{{REPOSO}}|T:1000
+Salida: {"command":"C","confidence":0.95}
 
-Entrada: RMS:[0.88,0.20,0.78,0.59,0.11,0.08,0.12,0.77]|SIM:[C=0.80,O=0.98]|STATE:ACTIVE|PREV:{{REPOSO}}|T:1200
-Salida: {"command":"O","confidence":0.90}
+Entrada: RMS:[0.88,0.20,0.78,0.59,0.11,0.08,0.12,0.77]|SIM:[C=0.80,O=0.98]|DIST:[{{REPOSO}}=1.55,C=0.96,O=0.81]|PREV:{{REPOSO}}|T:1200
+Salida: {"command":"O","confidence":0.95}
 
-Entrada: RMS:[0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00]|SIM:[C=0.00,O=0.00]|STATE:REST|PREV:O|T:1400
+Entrada: RMS:[0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00]|SIM:[C=0.00,O=0.00]|DIST:[{{REPOSO}}=0.00,C=1.01,O=0.77]|PREV:O|T:1400
 Salida: {"command":"{{REPOSO}}","confidence":0.95}
 
-Entrada: RMS:[0.21,0.28,0.15,0.18,0.04,0.17,0.25,0.26]|SIM:[C=0.90,O=0.76]|STATE:TRANSITION|PREV:C|T:1600
-Salida: {"command":"C","confidence":0.70}
+Entrada: RMS:[0.21,0.28,0.15,0.18,0.04,0.17,0.25,0.26]|SIM:[C=0.90,O=0.76]|DIST:[{{REPOSO}}=0.58,C=0.55,O=0.50]|PREV:C|T:1600
+Salida: {"command":"C","confidence":0.53}
 
-Entrada: RMS:[0.17,0.06,0.26,0.15,0.00,0.00,0.01,0.38]|SIM:[C=0.69,O=0.97]|STATE:TRANSITION|PREV:O|T:1800
-Salida: {"command":"O","confidence":0.90}
+Entrada: RMS:[0.17,0.06,0.26,0.15,0.00,0.00,0.01,0.38]|SIM:[C=0.69,O=0.97]|DIST:[{{REPOSO}}=0.52,C=0.76,O=0.30]|PREV:O|T:1800
+Salida: {"command":"O","confidence":0.72}
 
-Entrada: RMS:[0.00,0.00,0.05,0.11,0.04,0.01,0.00,0.00]|SIM:[C=0.00,O=0.00]|STATE:REST|PREV:O|T:2000
-Salida: {"command":"{{REPOSO}}","confidence":0.90}
+Entrada: RMS:[0.00,0.00,0.05,0.11,0.04,0.01,0.00,0.00]|SIM:[C=0.38,O=0.58]|DIST:[{{REPOSO}}=0.13,C=0.97,O=0.70]|PREV:O|T:2000
+Salida: {"command":"{{REPOSO}}","confidence":0.95}

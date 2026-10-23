@@ -3,15 +3,14 @@ function cfg = agent_config()
 
 root = fileparts(fileparts(mfilename('fullpath')));        % carpeta raíz del proyecto
 
-%% Fuente de la señal
-cfg.source = 'myo';                                         % 'myo' (si no responde usa las muestras) o 'samples'
-cfg.myo.device_name = 'Myo';                                % nombre Bluetooth del brazalete
+%% Myo Armband (única fuente de señal)
+cfg.myo.link = 'dongle';                                    % 'dongle' = adaptador USB del Myo, 'bluetooth' = Bluetooth del PC
+cfg.myo.dongle_port = 'auto';                               % puerto del adaptador USB (BLED112); 'auto' lo busca
+cfg.myo.device_name = 'MYO.94';                             % nombre del brazalete (solo para Bluetooth del PC)
+cfg.myo.scan_timeout = 10;                                  % s buscando el Myo con el adaptador
 cfg.myo.emg_mode = 2;                                       % 2 = EMG filtrado por el Myo, 3 = EMG crudo
 cfg.myo.connect_timeout = 3;                                % s para recibir el primer EMG tras conectar
-cfg.myo.dropout_timeout = 3;                                % s sin EMG antes de pasar a las muestras
-cfg.samples.folder = fullfile(root, 'samples');             % carpeta con muestra_1.csv ... muestra_N.csv
-cfg.samples.count = 15;                                     % número de archivos de muestras
-cfg.samples.loop = false;                                   % true = volver a empezar al terminar
+cfg.myo.dropout_timeout = 3;                                % s sin EMG antes de avisar que el Myo se cortó
 
 %% Ciclo de control
 cfg.fs = 200;                                               % frecuencia de muestreo del Myo (Hz)
@@ -26,9 +25,6 @@ cfg.signal.rest_rms = [2 2 6 4 5 3 2 2];                    % RMS de cada canal 
 cfg.signal.max_rms = [50 50 50 50 50 50 50 50];             % RMS de cada canal en contracción máxima
 cfg.signal.rest_mav = 0.8 * cfg.signal.rest_rms;            % MAV en reposo (MAV ~ 0.8 x RMS)
 cfg.signal.max_mav = 0.8 * cfg.signal.max_rms;              % MAV en contracción máxima
-cfg.signal.rest_threshold = 0.15;                           % por debajo: REST
-cfg.signal.active_threshold = 0.40;                         % por encima: ACTIVE
-cfg.signal.saturation_level = 127;                          % valor de saturación del Myo (int8)
 
 %% Comandos de la prótesis (sin '#')
 cfg.rest_command = 'S';                                     % reposo: mano relajada, ligeramente abierta
@@ -41,10 +37,14 @@ cfg.gestures(2).name = 'mano abierta';                      % nombre para el pro
 cfg.gestures(2).hint = 'CH3 alto y CH7 casi 0';             % canales que lo distinguen
 cfg.gestures(2).profile = [0.33 0.10 0.44 0.31 0.02 0.01 0.03 0.42]; % RMS medio CH1..CH8 en las muestras
 
-%% Imagen que recibe el LLM
-cfg.image.width = 640;                                      % ancho en píxeles
-cfg.image.height = 480;                                     % alto en píxeles
-cfg.image.file = fullfile(tempdir, 'emg_bars.png');         % archivo temporal de la imagen
+%% Imágenes que recibe el LLM (todas se ven en el dashboard)
+cfg.image.send.features = true;                             % matriz de características (RMS, MAV, WL, ZC, SSC)
+cfg.image.send.waves = true;                                % ondas normalizadas de los canales
+cfg.image.send.envelope = false;                            % envolvente general (media de los 8 canales)
+cfg.image.context_s = 1;                                    % segundos de señal en ondas y envolvente
+cfg.image.envelope_ms = 50;                                 % ventana de la envolvente RMS móvil (ms)
+cfg.image.width = 640;                                      % ancho de cada imagen en píxeles
+cfg.image.height = 480;                                     % alto de cada imagen en píxeles
 
 %% Servidor del LLM (LM Studio)
 cfg.llm.ip = '100.92.219.95';                                % IP del servidor
@@ -59,10 +59,14 @@ cfg.llm.stop = {['}' newline], ['}' char(13) newline]};     % cortar al cerrar e
 cfg.llm.prompt_file = fullfile(root, 'config', 'system_es.txt'); % system prompt (o system_en.txt)
 
 %% Prótesis
+cfg.prosthesis.mode = 'http';                               % comunicación: 'http' o 'serial'
 cfg.prosthesis.host = '100.73.114.17';                      % IP del servidor de la prótesis
 cfg.prosthesis.port = 8000;                                 % puerto
 cfg.prosthesis.endpoint = '/api/command';                   % ruta del POST
 cfg.prosthesis.timeout = 0.5;                               % s de espera por comando
+cfg.prosthesis.serial_port = 'COM3';                        % puerto serie (Windows: COMx)
+cfg.prosthesis.baud_rate = 115200;                          % velocidad del puerto serie
+cfg.prosthesis.terminator = 'LF';                           % fin de línea: 'LF', 'CR' o 'CR/LF'
 cfg.prosthesis.safe_command = 'S';                          % comando de reposo al terminar
 
 %% Suavizado del comando

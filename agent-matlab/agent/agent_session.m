@@ -12,6 +12,7 @@ classdef agent_session < handle
         n                   % muestras por ventana
         prev                % último comando enviado
         smoothing = []      % memoria del suavizado
+        context             % último segundo de señal filtrada (para ondas, envolvente y mapa)
         stats               % contadores de la sesión
         clock               % reloj de la sesión (tic)
         log_file            % archivo con la copia de la consola
@@ -41,9 +42,15 @@ classdef agent_session < handle
                 fprintf('%s\n', obj.system_prompt);                 % lo imprime completo
             end
 
-            obj.device = myo_interface(cfg);                        % Myo o muestras
+            try
+                obj.device = myo_interface(cfg);                    % Myo o muestras, según la fuente elegida
+            catch err
+                diary('off');                                       % cierra el registro antes de avisar
+                rethrow(err);                                       % la UI o la consola muestran el motivo
+            end
             obj.n = round(cfg.window_ms / 1000 * cfg.fs);           % muestras por ventana (40)
             obj.prev = struct('command', cfg.rest_command);         % al inicio, reposo
+            obj.context = zeros(round(cfg.image.context_s * cfg.fs), 8); % contexto vacío
             obj.stats = struct('cycles', 0, 'llm_ok', 0, 'fallback', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
             obj.clock = tic;                                        % arranca el reloj
         end
@@ -55,12 +62,11 @@ classdef agent_session < handle
             r.t_ms = round(1000 * toc(obj.clock));                  % tiempo desde el inicio
 
             % 1. Adquisición
-            [r.emg, r.origin] = obj.device.read_window(obj.n);      % siguiente ventana (40 x 8)
-            r.done = isempty(r.emg);                                % no quedan datos
+            [r.emg, r.origin] = obj.device.read_window(obj.n);      % siguiente ventana del Myo (40 x 8)
+            r.done = isempty(r.emg);                                % sin datos (no debería ocurrir)
             if r.done
                 return;
             end
-            r.source = obj.device.source;                           % 'myo' o 'samples'
             obj.stats.cycles = obj.stats.cycles + 1;                % cuenta el ciclo
             r.cycle = obj.stats.cycles;                             % número de ciclo
             print_title(sprintf('CICLO %d | T = %d ms | %s', r.cycle, r.t_ms, r.origin));
@@ -69,7 +75,7 @@ classdef agent_session < handle
             end
 
             % 2. Procesamiento
-            r.f = process_signals(r.emg, cfg);                      % filtro, RMS, MAV, estado, similitud
+            r.f = process_signals(r.emg, cfg);                      % filtro, RMS, MAV, similitud y distancias
             if cfg.console.filtered_window
                 print_matrix('Señal filtrada (20-95 Hz + notch)', r.f.filtered, '%6.1f');
             end
@@ -77,18 +83,24 @@ classdef agent_session < handle
             print_vector('RMS [0,1]  ', r.f.rms, '%6.2f');
             print_vector('MAV crudo  ', r.f.mav_raw, '%6.2f');
             print_vector('MAV [0,1]  ', r.f.mav, '%6.2f');
-            for g = 1:numel(cfg.gestures)                           % parecido con cada gesto
-                log_msg('SEÑAL', 'Similitud con %s (%s): %.2f', cfg.gestures(g).command, ...
-                    cfg.gestures(g).name, r.f.similarity(g));
+            for g = 1:numel(cfg.gestures)                           % parecido y distancia a cada gesto
+                log_msg('SEÑAL', '%s (%s): similitud %.2f | distancia %.2f', cfg.gestures(g).command, ...
+                    cfg.gestures(g).name, r.f.similarity(g), r.f.distance(g));
             end
-            log_msg('SEÑAL', 'Estado: %s %s', r.f.state, r.f.noise);
+            log_msg('SEÑAL', '%s (reposo): distancia %.2f', cfg.rest_command, r.f.rest_distance);
+            print_vector('WL         ', r.f.wl, '%6.0f');
+            print_vector('ZC         ', r.f.zc, '%6d');
+            print_vector('SSC        ', r.f.ssc, '%6d');
 
-            % 3. Entrada del LLM: texto + imagen
+            % 3. Entrada del LLM: texto + imágenes marcadas
+            n = size(r.f.filtered, 1);                              % muestras nuevas
+            obj.context = [obj.context(n + 1:end, :); r.f.filtered]; % desplaza y añade la ventana
+            r.vis = visual_data(r.f, obj.context, cfg);             % datos de las 4 imágenes
             r.payload = build_payload(r.f, obj.prev, r.t_ms, cfg);  % texto de una línea
-            r.image_file = generate_image(r.f, r.t_ms, cfg);        % gráfico de barras en PNG
+            r.image_files = generate_images(r.vis, r.f, cfg);       % PNG de las imágenes marcadas
 
             % 4. LLM
-            r.reply = send_input_llm(cfg.llm, obj.system_prompt, r.payload, r.image_file);
+            r.reply = send_input_llm(cfg.llm, obj.system_prompt, r.payload, r.image_files);
             obj.stats.llm_ms = obj.stats.llm_ms + r.reply.latency_ms; % acumula la latencia
             if r.reply.ok
                 [cmd, r.valid, r.reason] = parse_llm_response(r.reply.content, cfg); % extrae y valida
@@ -112,7 +124,7 @@ classdef agent_session < handle
             [r.sent, obj.smoothing] = smooth_command(cmd, obj.smoothing, cfg); % evita parpadeos
             print_command('A enviar ', r.sent);
             log_msg('SUAVE', '%s', r.sent.smoothing);
-            r.prosthesis_ok = send_prosthesis_command(cfg.prosthesis, r.sent.command); % POST
+            r.prosthesis_ok = send_prosthesis_command(cfg.prosthesis, r.sent.command); % HTTP o serie
             obj.stats.prosthesis_ok = obj.stats.prosthesis_ok + r.prosthesis_ok; % cuenta aceptados
             obj.prev = r.sent;                                      % PREV del siguiente ciclo
 
@@ -141,6 +153,7 @@ classdef agent_session < handle
             safe = obj.cfg.prosthesis.safe_command;                 % comando de reposo
             log_msg('MAIN', 'Fin: se envía el comando de reposo %s', safe);
             send_prosthesis_command(obj.cfg.prosthesis, safe);      % deja la mano en reposo
+            send_prosthesis_command('close');                       % libera el puerto serie, si se usó
             obj.device.close();                                     % libera el Bluetooth
             diary('off');                                           % cierra el registro
         end
@@ -154,15 +167,24 @@ end
 
 function print_config(cfg)
 % Imprime la configuración principal.
-log_msg('CONFIG', 'Fuente: %s | ventana %d ms a %d Hz | periodo %.2f s', cfg.source, ...
+log_msg('CONFIG', 'Myo por %s | ventana %d ms a %d Hz | periodo %.2f s', cfg.myo.link, ...
     cfg.window_ms, cfg.fs, cfg.period_s);
 log_msg('CONFIG', 'LLM: http://%s:[%s]%s | modelo %s | timeout %.2f s', cfg.llm.ip, ...
     num2str(cfg.llm.ports), cfg.llm.endpoint, cfg.llm.model, cfg.llm.timeout);
-log_msg('CONFIG', 'Prótesis: http://%s:%d%s', cfg.prosthesis.host, cfg.prosthesis.port, ...
-    cfg.prosthesis.endpoint);
-log_msg('CONFIG', 'Filtro %d-%d Hz, notch %d Hz | umbrales REST %.2f, ACTIVE %.2f', ...
-    cfg.signal.band_hz, cfg.signal.powerline_hz, cfg.signal.rest_threshold, ...
-    cfg.signal.active_threshold);
+if strcmp(cfg.prosthesis.mode, 'serial')
+    log_msg('CONFIG', 'Prótesis: serie %s a %d baudios (fin de línea %s)', cfg.prosthesis.serial_port, ...
+        cfg.prosthesis.baud_rate, cfg.prosthesis.terminator);
+else
+    log_msg('CONFIG', 'Prótesis: http://%s:%d%s', cfg.prosthesis.host, cfg.prosthesis.port, ...
+        cfg.prosthesis.endpoint);
+end
+[kinds, titles] = image_kinds();                            % imágenes que se enviarán al LLM
+sent = titles(cellfun(@(k) cfg.image.send.(k), kinds));
+if isempty(sent)
+    sent = {'ninguna'};                                     % solo se enviará el texto
+end
+log_msg('CONFIG', 'Imágenes al LLM: %s', strjoin(sent, ', '));
+log_msg('CONFIG', 'Filtro %d-%d Hz, notch %d Hz', cfg.signal.band_hz, cfg.signal.powerline_hz);
 print_vector('RMS reposo ', cfg.signal.rest_rms, '%6.1f');
 print_vector('RMS máximo ', cfg.signal.max_rms, '%6.1f');
 log_msg('CONFIG', 'Comandos: %s = reposo', cfg.rest_command);

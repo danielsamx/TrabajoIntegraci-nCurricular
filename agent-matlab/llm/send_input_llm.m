@@ -1,20 +1,22 @@
-function reply = send_input_llm(llm, system_prompt, payload, image_file)
-% SEND_INPUT_LLM Envía TEXTO + IMAGEN al LLM y devuelve su respuesta.
+function reply = send_input_llm(llm, system_prompt, payload, image_files)
+% SEND_INPUT_LLM Envía TEXTO + IMÁGENES (0 a 4 PNG) al LLM y devuelve su respuesta.
 %   Prueba los puertos de llm.ports en orden hasta que uno responda.
 %   reply.ok, reply.content (texto del modelo), reply.port, reply.latency_ms, reply.error
 
 reply = struct('ok', false, 'content', '', 'port', NaN, 'latency_ms', NaN, 'error', '');
 timer = tic;                                                % mide la latencia total
 
-fid = fopen(image_file, 'r');                               % abre el PNG
-png = fread(fid, Inf, '*uint8');                            % lee sus bytes
-fclose(fid);                                                % cierra el archivo
-image_b64 = char(matlab.net.base64encode(png'));            % bytes -> texto Base64
-
-user_content = { ...                                        % mensaje del usuario: texto + imagen
-    struct('type', 'text', 'text', payload), ...
-    struct('type', 'image_url', 'image_url', ...
-        struct('url', ['data:image/png;base64,' image_b64]))};
+user_content = {struct('type', 'text', 'text', payload)};   % mensaje del usuario: primero el texto
+sizes = zeros(1, numel(image_files));                       % bytes de cada PNG (para la consola)
+for k = 1:numel(image_files)                                % después, cada imagen marcada
+    fid = fopen(image_files{k}, 'r');                       % abre el PNG
+    png = fread(fid, Inf, '*uint8');                        % lee sus bytes
+    fclose(fid);                                            % cierra el archivo
+    sizes(k) = numel(png);
+    image_b64 = char(matlab.net.base64encode(png'));        % bytes -> texto Base64
+    user_content{end + 1} = struct('type', 'image_url', 'image_url', ...
+        struct('url', ['data:image/png;base64,' image_b64])); %#ok<AGROW>
+end
 body = struct();                                            % cuerpo de la petición
 body.model = llm.model;                                     % modelo de LM Studio
 body.messages = {struct('role', 'system', 'content', system_prompt), ... % reglas del clasificador
@@ -29,8 +31,12 @@ log_msg('LLM', 'Petición: modelo=%s | temperature=%g | max_tokens=%d | %d bytes
     llm.model, llm.temperature, llm.max_tokens, numel(body_json));
 log_msg('LLM', '  system : (system prompt de %d caracteres)', numel(system_prompt));
 log_msg('LLM', '  texto  : %s', payload);
-log_msg('LLM', '  imagen : %s (%d bytes PNG, %d caracteres Base64)', image_file, ...
-    numel(png), numel(image_b64));
+for k = 1:numel(image_files)
+    log_msg('LLM', '  imagen %d: %s (%d bytes PNG)', k, image_files{k}, sizes(k));
+end
+if isempty(image_files)
+    log_msg('LLM', '  imágenes: ninguna (solo texto)');
+end
 
 options = weboptions('MediaType', 'application/json', ...   % enviamos JSON
     'ContentType', 'json', ...                              % esperamos JSON

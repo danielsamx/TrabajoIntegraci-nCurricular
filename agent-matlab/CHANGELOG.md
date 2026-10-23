@@ -6,6 +6,70 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.6.0] - 2026-10-23
+
+### Removed / Eliminado
+- Fuente de muestras grabadas (`samples/`): el Myo es la única fuente. La carpeta de datos se conserva.
+- Todos los umbrales (`rest_threshold`, `active_threshold`, `saturation_level`, `feature_threshold`)
+  y el estado REST/TRANSITION/ACTIVE/NOISE.
+
+### Changed / Cambiado
+- Decisión sin umbrales: `SIM` (coseno) elige el gesto y `DIST` (distancia al reposo frente a la
+  distancia a ese gesto) decide si es reposo. El LLM recibe `RMS|SIM|DIST|PREV|T`.
+- System prompts (es/en) y respaldo local reescritos con ese procedimiento (147/149 en las grabaciones).
+- La barra lateral reparte todo el alto visible entre secciones, sin desplazamiento.
+- Indicadores del dashboard: ciclo, comando, confianza, decisión, latencia y duración.
+
+### Added / Añadido
+- Botón **Cargar** junto a *Modelo*: `GET /v1/models` rellena la lista con los modelos del servidor LLM.
+
+## [2.5.1] - 2026-10-23
+
+### Fixed / Corregido
+- Ya no se usa Signal Processing Toolbox: `butter`, `zp2sos` y `filtfilt` se sustituyen por
+  `processing/bandpass_sos.m` y `utils/zero_phase.m` (misma respuesta en frecuencia). Evita el
+  error 5006 de MATLAB al pedir la licencia del toolbox en el primer ciclo.
+- La UI guarda en el registro el informe completo de cualquier error durante la ejecución.
+- `myo_interface` cierra los puertos serie que MATLAB hubiera dejado abiertos antes de buscar el adaptador.
+
+## [2.5.0] - 2026-10-23
+
+### Added / Añadido
+- Lectura del Myo por su adaptador USB inalámbrico (BLED112, protocolo BGAPI por puerto serie),
+  sin Myo Connect. `cfg.myo.dongle_port = 'auto'` busca el adaptador entre los puertos libres.
+- Botón "Probar Myo" y mensajes que explican por qué no se puede leer el Myo (puerto ocupado por
+  Myo Connect, adaptador no enchufado, Myo apagado o cargando, sin EMG, corte durante la sesión).
+
+### Changed / Cambiado
+- La fuente (Myo o muestras) la elige el usuario; ya no se cambia sola a las muestras.
+
+## [2.4.1] - 2026-10-16
+
+### Changed / Cambiado
+- Vuelven los 8 canales individuales al dashboard.
+- Matriz de características con una fila por canal (columnas RMS, MAV, WL, ZC, SSC).
+- Envolvente general: una sola curva, la media de las envolventes de los 8 canales.
+- La ventana se abre maximizada para que la cabecera (Prompt, Iniciar, Detener) siempre se vea.
+
+### Removed / Eliminado
+- Mapa de calor y panel "Detalle del ciclo" (el detalle sigue en la consola).
+
+## [2.4.0] - 2026-10-16
+
+### Added / Añadido
+- Cuatro imágenes para el LLM, cada una con su casilla en la vista Prompt (`cfg.image.send`):
+  matriz de características (RMS, MAV, WL, ZC, SSC), ondas normalizadas, envolvente general y
+  mapa de calor. Por defecto se envían las dos primeras. Las cuatro se ven en el dashboard.
+- Prótesis por puerto serie (`cfg.prosthesis.mode = 'serial'`) con interruptor HTTP / Serial.
+- Marcador `{{IMAGENES}}` en el prompt; características WL, ZC y SSC en la consola.
+
+### Changed / Cambiado
+- Barra lateral sin desplazamiento (filas compactas y campos en pareja); botones azules con
+  letra blanca en negrita (Detener en rojo); amarillo solo como acento.
+
+### Removed / Eliminado
+- `processing/generate_image.m` (gráfico de barras), sustituido por las 4 imágenes.
+
 ## [2.3.1] - 2026-10-04
 
 ### Fixed / Corregido
