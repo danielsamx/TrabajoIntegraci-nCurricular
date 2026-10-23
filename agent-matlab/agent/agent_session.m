@@ -1,6 +1,6 @@
 classdef agent_session < handle
     % AGENT_SESSION Una sesión del agente: EMG -> LLM -> prótesis, impresa en consola.
-    %   s = agent_session(cfg)            prepara registro, prompt y fuente de señal
+    %   s = agent_session(cfg)            prepara registro y prompt, comprueba el LLM y conecta el Myo
     %   s = agent_session(cfg, plantilla) usa ese texto de prompt en lugar del archivo
     %   r = s.step()                      ejecuta un ciclo; r.done = true si no quedan datos
     %   s.finish()                        resumen, reposo a la prótesis, Myo liberado
@@ -43,7 +43,8 @@ classdef agent_session < handle
             end
 
             try
-                obj.device = myo_interface(cfg);                    % Myo o muestras, según la fuente elegida
+                obj.check_llm();                                    % sin servidor LLM no se arranca
+                obj.device = myo_interface(cfg);                    % conecta el Myo
             catch err
                 diary('off');                                       % cierra el registro antes de avisar
                 rethrow(err);                                       % la UI o la consola muestran el motivo
@@ -51,7 +52,7 @@ classdef agent_session < handle
             obj.n = round(cfg.window_ms / 1000 * cfg.fs);           % muestras por ventana (40)
             obj.prev = struct('command', cfg.rest_command);         % al inicio, reposo
             obj.context = zeros(round(cfg.image.context_s * cfg.fs), 8); % contexto vacío
-            obj.stats = struct('cycles', 0, 'llm_ok', 0, 'fallback', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
+            obj.stats = struct('cycles', 0, 'llm_ok', 0, 'llm_failed', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
             obj.clock = tic;                                        % arranca el reloj
         end
 
@@ -108,15 +109,18 @@ classdef agent_session < handle
                 [cmd, r.valid, r.reason] = deal([], false, r.reply.error); % no hubo respuesta
             end
 
-            % 5. Respaldo si el LLM falla
-            if r.valid
-                obj.stats.llm_ok = obj.stats.llm_ok + 1;            % comando del LLM aceptado
-                log_msg('LLM', 'Comando válido');
-            else
-                obj.stats.fallback = obj.stats.fallback + 1;        % se usa el respaldo
-                log_msg('LLM', 'Respuesta descartada: %s', r.reason);
-                cmd = fallback_command(r.f, obj.prev, cfg);         % reglas locales
+            % 5. Sin comando válido del LLM no se envía nada
+            [r.decided, r.sent, r.prosthesis_ok] = deal([], [], false); % por defecto, nada decidido
+            if ~r.valid
+                obj.stats.llm_failed = obj.stats.llm_failed + 1;    % ciclo sin comando
+                log_msg('LLM', 'Sin comando: %s', r.reason);
+                log_msg('PROT', 'No se envía nada; la prótesis mantiene %s', obj.prev.command);
+                r.cycle_ms = 1000 * toc(timer);                     % duración del ciclo
+                log_msg('MAIN', 'Ciclo %d terminado en %.0f ms', r.cycle, r.cycle_ms);
+                return;
             end
+            obj.stats.llm_ok = obj.stats.llm_ok + 1;                % comando del LLM aceptado
+            log_msg('LLM', 'Comando válido');
             r.decided = cmd;                                        % comando antes del suavizado
             print_command('Decidido ', cmd);
 
@@ -132,6 +136,26 @@ classdef agent_session < handle
             log_msg('MAIN', 'Ciclo %d terminado en %.0f ms', r.cycle, r.cycle_ms);
         end
 
+        function check_llm(obj)
+            % Comprueba que el servidor LLM responde y que tiene el modelo configurado.
+            llm = obj.cfg.llm;
+            log_msg('LLM', 'Comprobando el servidor: http://%s:[%s]/v1/models', llm.ip, num2str(llm.ports));
+            [models, report] = list_llm_models(llm);                % GET /v1/models
+            for k = 1:numel(report)
+                log_msg('LLM', '  %s', report{k});                  % resultado de cada puerto
+            end
+            if isempty(models)                                      % ningún puerto respondió
+                error('agent:llm', ['El servidor LLM no responde en %s (puertos %s). ' ...
+                    'Inicia el servidor en LM Studio y vuelve a pulsar Iniciar.\n%s'], ...
+                    llm.ip, num2str(llm.ports), strjoin(report, newline));
+            end
+            log_msg('LLM', 'Modelos disponibles: %s', strjoin(models, ', '));
+            if ~any(strcmp(models, llm.model))                      % el modelo elegido no está
+                error('agent:model', ['El servidor LLM no tiene el modelo "%s". ' ...
+                    'Pulsa Cargar junto a Modelo y elige uno de: %s'], llm.model, strjoin(models, ', '));
+            end
+        end
+
         function summary = finish(obj)
             % Imprime el resumen y deja todo en estado seguro (se puede llamar varias veces).
             summary = obj.stats;                                    % contadores
@@ -145,7 +169,7 @@ classdef agent_session < handle
             print_title('RESUMEN');
             fprintf('Ciclos                 : %d\n', summary.cycles);
             fprintf('Comandos del LLM       : %d\n', summary.llm_ok);
-            fprintf('Comandos de respaldo   : %d\n', summary.fallback);
+            fprintf('Ciclos sin comando     : %d\n', summary.llm_failed);
             fprintf('Aceptados por prótesis : %d\n', summary.prosthesis_ok);
             fprintf('Latencia media del LLM : %.0f ms\n', summary.llm_mean_ms);
             fprintf('Duración               : %.1f s\n', summary.duration_s);

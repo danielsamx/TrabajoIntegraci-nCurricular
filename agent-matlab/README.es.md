@@ -97,7 +97,7 @@ La consola completa queda guardada en `logs/sesion_<fecha>.txt`.
 2. Las 40 × 8 muestras crudas y las filtradas.
 3. RMS y MAV por canal, crudos y normalizados, y la similitud y distancia a cada gesto y al reposo.
 4. La petición al LLM (texto, imagen, puerto), la respuesta HTTP completa y el texto generado.
-5. Si el comando es válido o por qué se descartó (en ese caso decide el respaldo local).
+5. Si el comando es válido o por qué se descartó (en ese caso no se envía nada a la prótesis).
 6. El comando decidido, el suavizado y el comando enviado.
 7. El POST a la prótesis y su respuesta.
 
@@ -124,8 +124,8 @@ processing/generate_images.m   guarda como PNG las imágenes marcadas para el LL
 processing/image_kinds.m       nombres y descripciones de las 3 imágenes
 llm/send_input_llm.m           petición HTTP al LLM
 llm/parse_llm_response.m       extrae y valida el JSON de la respuesta
+llm/list_llm_models.m          GET /v1/models: modelos del servidor (Cargar y comprobación al iniciar)
 prosthesis/send_prosthesis_command.m   envío a la prótesis por HTTP o puerto serie
-utils/fallback_command.m       decisión local si el LLM falla
 utils/smooth_command.m         evita cambios bruscos entre ciclos
 utils/log_msg.m                línea de consola con hora
 utils/read_text.m, write_text.m   leer y guardar texto en UTF-8
@@ -168,5 +168,13 @@ Respuesta esperada: `{"command":"C","confidence":0.90}`.
    si el reposo está más cerca, el comando es `S`; si no, el gesto.
 3. La confianza crece con la diferencia entre esas dos distancias (0.50 a 0.95).
 
-El LLM sigue este procedimiento (system prompt) y `utils/fallback_command.m` lo aplica en local
-cuando el LLM no responde. Con las grabaciones de prueba acierta 147 de 149 ventanas.
+El LLM sigue este procedimiento (system prompt). Con las grabaciones de prueba la regla acierta
+147 de 149 ventanas.
+
+## Solo decide el LLM
+
+- Al pulsar **Iniciar** (o al ejecutar `main`) se comprueba el servidor con `GET /v1/models`. Si no
+  responde, o no tiene el modelo elegido, la sesión no arranca y se muestra el motivo.
+- Si en un ciclo el LLM no responde o su respuesta no es válida, **no se envía nada** a la
+  prótesis: mantiene el último comando. El dashboard muestra *SIN RESPUESTA* o *DESCARTADA*
+  y el motivo; la consola lo imprime. No hay decisión local de respaldo.

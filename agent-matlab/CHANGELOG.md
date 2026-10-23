@@ -6,6 +6,20 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.6.1] - 2026-10-23
+
+### Removed / Eliminado
+- Respaldo local (`utils/fallback_command.m`): solo el LLM decide el comando.
+
+### Changed / Cambiado
+- Si el LLM no responde o su respuesta no es válida, no se envía nada a la prótesis (mantiene el
+  último comando). El dashboard muestra *SIN RESPUESTA* o *DESCARTADA* y el motivo.
+- Al iniciar se comprueba el servidor LLM con `GET /v1/models`: sin servidor o sin el modelo
+  elegido, la sesión no arranca y se explica el motivo.
+
+### Added / Añadido
+- `llm/list_llm_models.m`, compartido por el botón Cargar y la comprobación inicial.
+
 ## [2.6.0] - 2026-10-23
 
 ### Removed / Eliminado

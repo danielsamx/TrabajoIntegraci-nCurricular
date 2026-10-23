@@ -59,7 +59,7 @@ classdef agent_ui < handle
         %% Ventana
         function build(obj)
             % Cabecera, línea de acento, barra lateral y área de contenido.
-            obj.fig = uifigure('Name', 'Agente prótesis sEMG + LLM', 'Position', [30 30 1600 900], ...
+            obj.fig = uifigure('Name', 'Agente EMG + LLM', 'Position', [30 30 1600 900], ...
                 'Color', obj.BG);
             obj.fig.CloseRequestFcn = @(~, ~) obj.on_close();       % cierre seguro
             obj.fig.WindowState = 'maximized';                      % ocupa toda la pantalla (nada queda fuera)
@@ -88,7 +88,7 @@ classdef agent_ui < handle
                 place(uiimage(head, 'ImageSource', logo, 'ScaleMethod', 'fit', ...
                     'HorizontalAlignment', 'left'), 1, 1);
             end
-            place(uilabel(head, 'Text', 'Control de prótesis  ·  sEMG + LLM', 'FontSize', 18, ...
+            place(uilabel(head, 'Text', 'Agente sEMG + LLM', 'FontSize', 18, ...
                 'FontWeight', 'bold', 'FontColor', obj.NAVY), 1, 2);
             obj.btn.tab_dashboard = obj.button(head, 'Dashboard', obj.NAVY, @(~, ~) obj.show_view('dashboard'));
             obj.btn.tab_prompt = obj.button(head, 'Prompt', obj.NAVY, @(~, ~) obj.show_view('prompt'));
@@ -256,7 +256,7 @@ classdef agent_ui < handle
             strip = uigridlayout(g, [1 6], 'Padding', [0 0 0 0], 'ColumnSpacing', 12, 'BackgroundColor', obj.BG);
             place(strip, 1, [1 3]);
             names = {'cycle', 'Ciclo'; 'command', 'Comando'; 'confidence', 'Confianza'; ...
-                'decision', 'Decidió'; 'latency', 'Latencia LLM'; 'duration', 'Duración del ciclo'};
+                'decision', 'Respuesta LLM'; 'latency', 'Latencia LLM'; 'duration', 'Duración del ciclo'};
             for k = 1:size(names, 1)
                 obj.tiles.(names{k, 1}) = obj.make_tile(strip, k, names{k, 2}, strcmp(names{k, 1}, 'command'));
             end
@@ -515,7 +515,7 @@ classdef agent_ui < handle
             end
             obj.reset_dashboard(cfg);
             obj.set_running(true);                                  % Iniciar apagado, Detener activo
-            obj.note(sprintf('Myo conectado. Registro: %s', session.log_file));
+            obj.note(sprintf('LLM y Myo conectados. Registro: %s', session.log_file));
             try
                 while obj.running && session.stats.cycles < cfg.max_cycles
                     r = session.step();                             % un ciclo completo
@@ -527,8 +527,8 @@ classdef agent_ui < handle
                     pause(max(0, cfg.period_s - r.cycle_ms / 1000)); % completa el periodo
                 end
                 summary = session.finish();
-                obj.note(sprintf('Terminado: %d ciclos, %d del LLM, %d de respaldo.', ...
-                    summary.cycles, summary.llm_ok, summary.fallback));
+                obj.note(sprintf('Terminado: %d ciclos, %d comandos del LLM, %d sin comando.', ...
+                    summary.cycles, summary.llm_ok, summary.llm_failed));
             catch err
                 log_msg('UI', 'Error en el ciclo:\n%s', getReport(err, 'extended', 'hyperlinks', 'off')); % dónde falló
                 session.finish();                                   % deja la prótesis en reposo
@@ -586,21 +586,30 @@ classdef agent_ui < handle
                 draw_emg_image(obj.img_axes.(kinds{k}), kinds{k}, r.vis, r.f, cfg);
             end
 
-            obj.commands{end + 1} = r.sent.command;                 % historial de comandos
-            y = cellfun(@(c) find(strcmp(obj.command_list, c), 1), obj.commands);
-            x = 1:numel(y);
-            keep = max(1, numel(y) - 59):numel(y);                  % últimos 60 ciclos
-            set(obj.hist_line, 'XData', x(keep), 'YData', y(keep));
-            obj.hist_ax.XLim = [x(keep(1)) - 0.5, x(keep(end)) + 0.5];
-
             obj.tiles.cycle.Text = sprintf('%d', r.cycle);
-            obj.tiles.confidence.Text = sprintf('%.2f', r.decided.confidence);
             obj.tiles.duration.Text = sprintf('%.0f ms', r.cycle_ms);
-            obj.tiles.decision.Text = upper(r.decided.source);
-            obj.tiles.decision.FontColor = ternary(r.valid, obj.NAVY, obj.RED);
+            obj.tiles.latency.Text = sprintf('%.0f ms', r.reply.latency_ms);
+            if ~r.valid                                             % el LLM no dio un comando válido
+                obj.tiles.decision.Text = ternary(r.reply.ok, 'DESCARTADA', 'SIN RESPUESTA');
+                obj.tiles.decision.FontColor = obj.RED;
+                obj.tiles.command.Text = '—';                       % no se envió nada
+                obj.tiles.command.FontColor = obj.NAVY;
+                obj.tiles.confidence.Text = '—';
+                obj.note(['Sin comando: ' r.reason]);               % motivo en la barra de estado
+                return;
+            end
+            obj.tiles.decision.Text = 'OK';
+            obj.tiles.decision.FontColor = obj.NAVY;
+            obj.tiles.confidence.Text = sprintf('%.2f', r.decided.confidence);
             obj.tiles.command.Text = r.sent.command;
             obj.tiles.command.FontColor = ternary(strcmp(r.sent.command, cfg.rest_command), obj.NAVY, obj.RED);
-            obj.tiles.latency.Text = sprintf('%.0f ms', r.reply.latency_ms);
+
+            obj.commands{end + 1} = r.sent.command;                 % historial: solo comandos enviados
+            y = cellfun(@(c) find(strcmp(obj.command_list, c), 1), obj.commands);
+            x = 1:numel(y);
+            keep = max(1, numel(y) - 59):numel(y);                  % últimos 60 comandos
+            set(obj.hist_line, 'XData', x(keep), 'YData', y(keep));
+            obj.hist_ax.XLim = [x(keep(1)) - 0.5, x(keep(end)) + 0.5];
         end
 
         function on_export(obj, kind)
@@ -639,27 +648,9 @@ classdef agent_ui < handle
         end
 
         function [models, report] = fetch_models(obj)
-            % GET /v1/models en cada puerto del servidor LLM: modelos disponibles y un informe.
+            % Modelos disponibles en el servidor LLM (GET /v1/models) y un informe por puerto.
             cfg = obj.read_controls();
-            options = weboptions('Timeout', 5, 'HeaderFields', {'Authorization', ['Bearer ' cfg.llm.api_key]});
-            models = {};
-            report = {};
-            for port = cfg.llm.ports
-                url = sprintf('http://%s:%d/v1/models', cfg.llm.ip, port);
-                try
-                    reply = webread(url, options);                  % lista de modelos
-                    data = reply.data;
-                    if iscell(data)
-                        data = [data{:}];                           % celda -> array de structs
-                    end
-                    ids = cellfun(@char, {data.id}, 'UniformOutput', false); % nombres de los modelos
-                    models = [models, ids]; %#ok<AGROW>
-                    report{end + 1} = sprintf('%s: OK (%d modelos)', url, numel(ids)); %#ok<AGROW>
-                catch err
-                    report{end + 1} = sprintf('%s: %s', url, err.message); %#ok<AGROW>
-                end
-            end
-            models = unique(models, 'stable');                      % sin repetidos
+            [models, report] = list_llm_models(cfg.llm);
             log_msg('UI', 'Modelos del servidor LLM: %s | %s', strjoin(models, ', '), strjoin(report, ' | '));
         end
 

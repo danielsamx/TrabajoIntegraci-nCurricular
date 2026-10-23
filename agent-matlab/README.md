@@ -23,4 +23,8 @@ and a prosthesis server accepting `POST /api/command` with `{"command": "B"}`.
 In the interface, the **Load** (Cargar) button next to *Modelo* fetches `GET /v1/models` and lists
 the models available on the LLM server. The sidebar fills the visible height with no scrolling.
 
+Only the LLM decides: on start the server is checked with `GET /v1/models` (no server or missing
+model = the session does not start), and if a cycle gets no valid answer nothing is sent to the
+prosthesis. There is no local fallback.
+
 See [README.es.md](README.es.md) for the file layout and the console output.
