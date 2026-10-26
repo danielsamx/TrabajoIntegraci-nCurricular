@@ -47,7 +47,7 @@ cfg.image.width = 640;                                      % ancho de cada imag
 cfg.image.height = 480;                                     % alto de cada imagen en píxeles
 
 %% Servidor del LLM (LM Studio)
-cfg.llm.ip = '100.92.219.95';                                % IP del servidor
+cfg.llm.ip = '172.29.27.65';                                % IP del servidor
 cfg.llm.ports = 1234;                                       % puertos; se prueban en orden, p. ej. [1234 1235]
 cfg.llm.endpoint = '/v1/chat/completions';                  % endpoint compatible con OpenAI
 cfg.llm.model = 'mistralai/ministral-3-3b';                 % modelo cargado en LM Studio
@@ -60,7 +60,7 @@ cfg.llm.prompt_file = fullfile(root, 'config', 'system_es.txt'); % system prompt
 
 %% Prótesis
 cfg.prosthesis.mode = 'http';                               % comunicación: 'http', 'serial' o 'bluetooth'
-cfg.prosthesis.host = '100.73.114.17';                      % IP del servidor de la prótesis
+cfg.prosthesis.host = '172.29.9.129';                      % IP del servidor de la prótesis
 cfg.prosthesis.port = 8000;                                 % puerto
 cfg.prosthesis.endpoint = '/api/command';                   % ruta del POST
 cfg.prosthesis.timeout = 0.5;                               % s de espera por comando

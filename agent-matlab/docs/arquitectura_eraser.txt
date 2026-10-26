@@ -1,0 +1,119 @@
+// Arquitectura del agente de control de prótesis sEMG + LLM (MATLAB) · v2.7.0
+// Pegar en eraser.io > nuevo diagrama > "Cloud Architecture" (modo código)
+
+title Agente de control de prótesis · sEMG + LLM
+direction right
+colorMode bold
+styleMode shadow
+typeface clean
+
+Usuario [icon: user, color: "#002A5C"]
+
+// 1. Captura de la señal
+Brazo del usuario [color: "#EE2E24"] {
+  Myo Armband [icon: activity, color: "#EE2E24"]
+}
+Enlace del Myo [color: "#FDBE57"] {
+  Adaptador BLED112 [icon: usb, color: "#002A5C"]
+  Bluetooth del PC [icon: bluetooth, color: "#002A5C"]
+}
+
+// 2. Aplicación MATLAB en el PC
+MATLAB PC [icon: monitor, color: "#002A5C"] {
+  Interfaz [icon: layout, color: "#002A5C"] {
+    agent_ui [icon: sidebar, color: "#002A5C"]
+    main consola [icon: terminal, color: "#002A5C"]
+  }
+  Configuración [icon: settings, color: "#FDBE57"] {
+    agent_config [icon: sliders, color: "#002A5C"]
+    system prompt es en [icon: file-text, color: "#002A5C"]
+    build_system_prompt [icon: edit-3, color: "#002A5C"]
+  }
+  Sesión [icon: refresh-cw, color: "#EE2E24"] {
+    agent_session [icon: cpu, color: "#EE2E24"]
+    myo_interface [icon: radio, color: "#002A5C"]
+  }
+  Procesamiento [icon: filter, color: "#002A5C"] {
+    process_signals [icon: filter, color: "#002A5C"]
+    Filtros sin toolbox [icon: sliders, color: "#002A5C"]
+    build_payload [icon: align-left, color: "#002A5C"]
+    Imágenes PNG [icon: image, color: "#002A5C"]
+  }
+  Cliente LLM [icon: message-square, color: "#002A5C"] {
+    list_llm_models [icon: list, color: "#002A5C"]
+    send_input_llm [icon: send, color: "#002A5C"]
+    parse_llm_response [icon: check-square, color: "#002A5C"]
+  }
+  Envío [icon: navigation, color: "#002A5C"] {
+    smooth_command [icon: git-commit, color: "#002A5C"]
+    send_prosthesis_command [icon: send, color: "#EE2E24"]
+  }
+  Registro [icon: archive, color: "#002A5C"] {
+    log_msg y logs [icon: file, color: "#002A5C"]
+  }
+}
+
+// 3. Servidor LLM
+LM Studio [icon: server, color: "#002A5C"] {
+  GET v1 models [icon: list, color: "#002A5C"]
+  POST v1 chat completions [icon: zap, color: "#002A5C"]
+  Modelo de visión [icon: eye, color: "#002A5C"]
+}
+
+// 4. Prótesis
+Canal a la prótesis [color: "#FDBE57"] {
+  HTTP api command [icon: globe, color: "#002A5C"]
+  Puerto serie COM [icon: hard-drive, color: "#002A5C"]
+  Bluetooth SPP [icon: bluetooth, color: "#002A5C"]
+}
+Mano Handi EPN V3 [icon: tool, color: "#EE2E24"] {
+  ESP32 firmware [icon: cpu, color: "#EE2E24"]
+  Motores de los dedos [icon: settings, color: "#EE2E24"]
+}
+
+// Usuario e interfaz
+Usuario > agent_ui: Iniciar / Detener, ajustes
+Usuario > main consola
+agent_ui > agent_session: un ciclo por periodo
+main consola > agent_session
+agent_session > agent_ui: dashboard 8 canales, imágenes, comandos
+agent_config > agent_session: toda la configuración
+system prompt es en > build_system_prompt: GESTOS, REPOSO, IMAGENES
+build_system_prompt > agent_session: system prompt final
+
+// Adquisición
+Myo Armband > Adaptador BLED112: BLE, EMG 2 x 8 int8
+Myo Armband > Bluetooth del PC: alternativa
+Adaptador BLED112 > myo_interface: serie BGAPI
+Bluetooth del PC > myo_interface
+myo_interface > agent_session: ventana 200 ms, 40 x 8
+
+// Procesamiento
+agent_session > process_signals
+Filtros sin toolbox > process_signals: Butterworth 20-95 Hz + notch
+process_signals > build_payload: RMS, SIM, DIST
+process_signals > Imágenes PNG: características, ondas, envolvente
+
+// LLM
+agent_session > list_llm_models: al iniciar
+list_llm_models > GET v1 models: comprobar servidor y modelo
+build_payload > send_input_llm: RMS|SIM|DIST|PREV|T
+Imágenes PNG > send_input_llm: base64
+send_input_llm > POST v1 chat completions
+POST v1 chat completions > Modelo de visión
+POST v1 chat completions > parse_llm_response: JSON command, confidence
+parse_llm_response > smooth_command: válido (S, C, O)
+parse_llm_response > log_msg y logs: inválido, no se envía nada
+
+// Prótesis
+smooth_command > send_prosthesis_command: mayoría / confianza
+send_prosthesis_command > HTTP api command
+send_prosthesis_command > Puerto serie COM
+send_prosthesis_command > Bluetooth SPP
+HTTP api command > ESP32 firmware
+Puerto serie COM > ESP32 firmware
+Bluetooth SPP > ESP32 firmware: letra + LF
+ESP32 firmware > Motores de los dedos
+
+// Registro
+agent_session > log_msg y logs: consola completa
