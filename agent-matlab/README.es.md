@@ -40,11 +40,12 @@ Colores: azul `#002A5C` (botones y texto), rojo `#EE2E24` (Detener y alertas), a
   - **Prótesis:** comunicación **HTTP**, **Puerto serie** o **Bluetooth**. En HTTP: host, puerto
     y ruta. En serie: puerto (↻ actualiza la lista) y baudios. En Bluetooth: nombre del dispositivo
     (↻ busca los cercanos) y canal. Además timeout, fin de línea, comando de reposo, comando al
-    detener y **Probar conexión**.
+    detener y dos botones de prueba: **Probar: abrir (O)** y **Probar: cerrar (C)**.
   - **Guardar configuración** escribe los cambios en `config/agent_config.m`.
-- **Dashboard:** indicadores (ciclo, comando, confianza, decisión, latencia y duración), los 8 canales individuales (EMG crudo de los últimos 2 s), las 3
+- **Dashboard:** indicadores (ciclo, acción, confianza, respuesta del LLM, latencia y duración), los 8 canales individuales (EMG crudo de los últimos 2 s), las 3
   imágenes (cada una indica si se envía al LLM y tiene un botón **PNG** para guardarla en
-  `logs/`) y los comandos enviados.
+  `logs/`) la postura enviada (cierre de cada dedo) y el cierre por ciclo. La barra de estado muestra
+  el motivo del LLM y la referencia por reglas.
 - **Prompt:** casillas de las imágenes que se envían al LLM, plantilla editable del system
   prompt y prompt final.
 
@@ -91,13 +92,13 @@ El puerto se abre una vez y se cierra al terminar la sesión o al cerrar la inte
 
 Con `cfg.prosthesis.mode = 'bluetooth'` se usa Bluetooth clásico (SPP) con la función `bluetooth`
 de MATLAB (R2020b+, sin toolboxes), como hace la app *Serial Bluetooth Terminal* del manual de la
-mano Handi EPN V3. Nombre por defecto: `Handi EPN V3`, canal `1`.
+mano Handi EPN V3. Nombre por defecto: `Handi_EPN_V3` (exacto, como aparece en Windows), canal `1`.
 
 1. El PC necesita Bluetooth propio o un adaptador USB Bluetooth. El adaptador del Myo (BLED112)
    **no sirve**: solo hace Bluetooth Low Energy y además está ocupado con el Myo.
-2. Encienda la mano y emparéjela en Configuración de Windows > Bluetooth ("Handi EPN V3").
+2. Encienda la mano y emparéjela en Configuración de Windows > Bluetooth ("Handi_EPN_V3").
    Desconéctela del móvil: el ESP32 acepta una sola conexión.
-3. En la interfaz: Comunicación = Bluetooth, ↻ para buscarla y **Probar conexión**.
+3. En la interfaz: Comunicación = Bluetooth, ↻ para buscarla y **Probar: abrir (O)** o **Probar: cerrar (C)**.
 
 Al pulsar **Iniciar** se conecta antes del primer ciclo; si no puede, la sesión no arranca y se
 explica el motivo. Alternativa equivalente: al emparejarla, Windows crea un puerto COM
@@ -108,17 +109,28 @@ Según el manual, `S` **detiene los motores** (no mueve la mano), `O` abre y `C`
 **Ctrl+C** detiene el agente; al salir siempre se envía el comando de reposo (`S`) a la prótesis.
 La consola completa queda guardada en `logs/sesion_<fecha>.txt`.
 
-## Qué se imprime en cada ciclo
+## Cadena de procesamiento (se imprime en cada ciclo)
 
-1. Muestras recibidas del Myo.
-2. Las 40 × 8 muestras crudas y las filtradas.
-3. RMS y MAV por canal, crudos y normalizados, y la similitud y distancia a cada gesto y al reposo.
-4. La petición al LLM (texto, imagen, puerto), la respuesta HTTP completa y el texto generado.
-5. Si el comando es válido o por qué se descartó (en ese caso no se envía nada a la prótesis).
-6. El comando decidido, el suavizado y el comando enviado.
-7. El POST a la prótesis y su respuesta.
+El modelo de visión **no está entrenado con EMG** (no se usa ChatEMG ni ningún modelo
+preentrenado en biosignales). Por eso todo el procesamiento se hace antes, de forma explícita,
+y el modelo recibe medidas ya calculadas e imágenes. La consola numera cada paso:
 
-Para reducir la salida, ponga en `false` las opciones `cfg.console.*` de `agent_config.m`.
+| Paso | Qué se hace | Resultado |
+|---|---|---|
+| PASO1 | Ventana de 200 ms del Myo | 40 × 8 muestras |
+| PASO2 | Pasa-banda 20-90 Hz (Butterworth, sin desfase) + notch 60 Hz | señal filtrada |
+| PASO3 | Rectificación de onda completa y características | RMS, MAV, WL, ZC, SSC por canal |
+| PASO4 | Normalización con el reposo y el máximo del usuario | RMS en [0, 1] |
+| PASO5 | Comparación con el perfil de cada gesto | `SIM` (forma), `DIST` (distancia) |
+| PASO6 | Activación de cada gesto (RMS = suma de perfiles × activación, ≥ 0) | `ACT`, `CIERRE` |
+| PASO7 | Postura de los 6 dedos para ese cierre y referencia por reglas | `POS`, referencia |
+| PASO8 | Entrada al modelo: texto + imágenes marcadas | petición |
+| PASO9 | Respuesta del modelo, validación y motivo (`reason`) | acción |
+| PASO10 | Suavizado, envío y retroalimentación (`FB`) | comando a la prótesis |
+
+La **referencia por reglas** aplica el mismo procedimiento del prompt sin LLM. Solo se imprime
+(no se envía) para comprobar si el modelo de visión lo sigue; el resumen muestra cuántas
+acciones coincidieron. Para reducir la salida, ponga en `false` las opciones `cfg.console.*`.
 
 ## Estructura
 
@@ -128,11 +140,11 @@ assets/                        logo de la interfaz
 main.m                         bucle sin interfaz (consola)
 add_project_paths.m            añade las carpetas al path
 agent/agent_session.m          un ciclo completo del agente (lo usan main y agent_ui)
-agent/build_system_prompt.m    inserta gestos y comando de reposo en el prompt
+agent/build_system_prompt.m    completa los marcadores del prompt
 config/agent_config.m          TODA la configuración
 config/system_es.txt / _en     system prompt del LLM
 acquisition/myo_interface.m    Myo (adaptador USB o Bluetooth del PC)
-processing/process_signals.m   filtro 20-95 Hz + notch, características, similitud y distancias
+processing/process_signals.m   cadena completa: filtros, rectificación, características, SIM, DIST, ACT, CIERRE, POS
 processing/bandpass_sos.m      diseño del Butterworth pasa-banda (sin toolboxes)
 processing/build_payload.m     texto que recibe el LLM
 processing/visual_data.m       datos de las 3 imágenes (características, ondas, envolvente)
@@ -143,7 +155,9 @@ llm/send_input_llm.m           petición HTTP al LLM
 llm/parse_llm_response.m       extrae y valida el JSON de la respuesta
 llm/list_llm_models.m          GET /v1/models: modelos del servidor (Cargar y comprobación al iniciar)
 prosthesis/send_prosthesis_command.m   envío a la prótesis por HTTP, puerto serie o Bluetooth
-utils/smooth_command.m         evita cambios bruscos entre ciclos
+utils/smooth_command.m         evita cambios bruscos (vota por tipo: S, C, O o POS)
+utils/posture_string.m         cierre (0-1) -> 'A..B..C..D..E..F..'
+utils/posture_values.m         'A..F..' -> 6 posiciones validadas
 utils/log_msg.m                línea de consola con hora
 utils/read_text.m, write_text.m   leer y guardar texto en UTF-8
 utils/zero_phase.m             filtrado adelante y atrás (como filtfilt)
@@ -155,38 +169,55 @@ Cada canal se normaliza a [0, 1] con dos valores fijos de `agent_config.m`:
 `cfg.signal.rest_rms` (reposo) y `cfg.signal.max_rms` (contracción máxima). Si con su
 brazalete los valores quedan siempre bajos o siempre saturados, ajuste esos dos vectores.
 
-## Comandos
+## Acciones de la prótesis
 
-La prótesis recibe solo letras, sin `#`:
+Según el manual de la Handi EPN V3:
 
-| Comando | Gesto | Cómo se reconoce en las muestras |
-|---|---|---|
-| `C` | mano cerrada (puño) | CH7 alto y CH3 casi 0 |
-| `O` | mano abierta | CH3 alto y CH7 casi 0 |
-| `S` | reposo (mano relajada, algo abierta) | RMS más cerca de 0 que del gesto |
+| Acción | Significado |
+|---|---|
+| `C` | cerrar la mano por completo |
+| `O` | abrir la mano por completo |
+| `S` | reposo: detiene los motores; la mano se queda como está |
+| `A..B..C..D..E..F..` | posición de cada dedo, p. ej. `A240B240C300D240E80F70` |
 
-Cada gesto se define en `cfg.gestures` de `agent_config.m` (comando, nombre, canales clave y
-perfil RMS medio). Esos datos se insertan en el system prompt al arrancar (marcador
-`{{GESTOS}}`; el comando de reposo va en `{{REPOSO}}`) y se usan para calcular `SIM` y `DIST`. Para añadir un
-gesto, añada otra entrada en `cfg.gestures` con su perfil.
+Dedos y rangos (`cfg.fingers`, Anexo A del manual): A meñique 0-350, B anular 0-350,
+C medio 0-440, D índice 0-350, E pulgar inferior 0-120, F pulgar superior 0-100.
+Se supone 0 = dedo extendido y máximo = flexionado (`cfg.fingers.open_at_zero`). Las
+posiciones se redondean a `cfg.fingers.step` (10). `C` sola es cerrar; `C` con número es el dedo medio.
 
 Texto que recibe el LLM en cada ciclo:
 
 ```
-RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|DIST:[S=1.57,C=0.59,O=1.15]|PREV:S|T:1000
+RMS:[0.52,0.21,0.00,0.20,0.04,0.03,0.31,0.20]|SIM:[C=0.96,O=0.65]|DIST:[S=0.70,C=0.38,O=0.62]|ACT:[C=0.67,O=0.00]|CIERRE:0.67|POS:A240B240C300D240E80F70|PREV:S|FB:OK|T:1200
 ```
 
-Respuesta esperada: `{"command":"C","confidence":0.90}`.
+Respuesta esperada: `{"command":"A240B240C300D240E80F70","confidence":0.82,"reason":"cierre parcial 0.67, copio POS"}`.
 
-## Decisión sin umbrales
+## Cómo se decide
 
-1. `SIM` (similitud coseno, forma del patrón) elige el gesto más parecido.
-2. `DIST` compara la distancia al reposo (todos los canales en 0) con la distancia a ese gesto:
-   si el reposo está más cerca, el comando es `S`; si no, el gesto.
-3. La confianza crece con la diferencia entre esas dos distancias (0.50 a 0.95).
+1. **Reposo:** `SIM` elige el gesto más parecido; si en `DIST` el reposo está más cerca que ese
+   gesto, la acción es `S`.
+2. **Cierre:** `ACT` dice cuánto de cada perfil contiene la ventana. `CIERRE` = (parte de cierre)
+   × fuerza, de 0 a 1. `CIERRE` 1.00 → `C`; 0.00 → `O`; cualquier otro valor → la postura `POS`.
+3. **Confianza:** 0.50 + diferencia entre las dos distancias del paso 1 (máximo 0.95). Si las
+   imágenes contradicen el texto, el modelo baja la confianza a 0.50.
+4. **Retroalimentación:** `FB` indica si el envío anterior llegó a la prótesis (OK, FALLO o NADA).
 
-El LLM sigue este procedimiento (system prompt). Con las grabaciones de prueba la regla acierta
-147 de 149 ventanas.
+En las grabaciones de prueba (149 ventanas), con la referencia por reglas:
+
+| Archivos | `S` | `C` | postura parcial | `O` |
+|---|---|---|---|---|
+| reposo (50) | 50 | 0 | 0 | 0 |
+| puño (49) | 21 | 4 | 24 (cierre 50-99 %) | 0 |
+| mano abierta (50) | 11 | 0 | 19 (cierre 1-17 %) | 20 |
+
+Las ventanas débiles (inicio y final de cada gesto) salen como `S`: la mano se queda como está.
+Por debajo de ~50 % del perfil de puño la ventana está más cerca del reposo, así que los cierres
+parciales empiezan en ~50 %. Los perfiles de `cfg.gestures` definen qué es el 100 %.
+
+Cada gesto se define en `cfg.gestures` (comando, nombre, canales clave, perfil RMS y `closure`:
+1 = cierra, 0 = abre). Marcadores del prompt: `{{GESTOS}}`, `{{REPOSO}}`, `{{DEDOS}}`,
+`{{FILTRO}}`, `{{IMAGENES}}` y `{{POS:x}}` (postura para un cierre x, usada en los ejemplos).
 
 ## Solo decide el LLM
 

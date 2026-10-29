@@ -29,15 +29,17 @@ classdef agent_ui < handle
         tiles = struct()    % valores de los indicadores
         img_axes = struct() % ejes de cada imagen del dashboard
         img_badges = struct() % etiqueta "se envía / no se envía" de cada imagen
-        hist_ax             % ejes del historial de comandos
-        hist_line           % línea del historial de comandos
+        hist_ax             % ejes del historial de cierre
+        hist_line           % línea del historial de cierre
+        pose_ax             % ejes de la postura enviada (6 dedos)
+        pose_bars           % barras de la postura enviada
         chan_lines          % líneas de los 8 canales individuales
         history             % últimos segundos de EMG crudo (muestras x 8)
         prompt_file         % desplegable con el archivo del prompt
         prompt_edit         % plantilla editable
         prompt_final        % prompt final (solo lectura)
-        commands = {}       % comandos enviados (historial)
-        command_list = {}   % comandos posibles, en el orden del eje Y
+        closures = []       % cierre enviado en cada ciclo (%), historial
+        pose = []           % postura vigente de los 6 dedos (%)
         running = false     % true mientras el agente está en marcha
         closing = false     % true si se cerró la ventana durante la ejecución
     end
@@ -148,7 +150,11 @@ classdef agent_ui < handle
                 {'prosthesis.terminator', 'Fin', 'dropdown', {'LF', 'CR', 'CR/LF'}}});
             obj.add_row(g, 6, {{'rest_command', 'Reposo', 'text', []}, ...
                 {'prosthesis.safe_command', 'Al detener', 'text', []}});
-            place(obj.button(g, 'Probar conexión', obj.NAVY, @(~, ~) obj.on_test_prosthesis()), 7, [1 2]);
+            tests = uigridlayout(g, [1 2], 'Padding', [0 0 0 0], 'ColumnSpacing', 6, ...
+                'BackgroundColor', obj.WHITE);                      % prueba con el comando que elija el usuario
+            place(tests, 7, [1 2]);
+            obj.button(tests, 'Probar: abrir (O)', obj.NAVY, @(~, ~) obj.on_test_prosthesis('O'));
+            obj.button(tests, 'Probar: cerrar (C)', obj.NAVY, @(~, ~) obj.on_test_prosthesis('C'));
 
             foot = uigridlayout(side, [2 1], 'RowHeight', {34, '1x'}, 'Padding', [0 4 0 0], ...
                 'RowSpacing', 6, 'BackgroundColor', obj.WHITE);
@@ -292,11 +298,18 @@ classdef agent_ui < handle
                 obj.img_axes.(kind) = obj.make_axes(bg);
             end
 
-            body = obj.make_card(g, [3 3], 'Comandos enviados');
-            hg = uigridlayout(body, [1 1], 'Padding', [0 0 0 0], 'BackgroundColor', obj.WHITE);
-            obj.hist_ax = obj.make_axes(hg);
+            body = obj.make_card(g, [3 3], 'Postura enviada · cierre por ciclo');
+            hg = uigridlayout(body, [1 2], 'ColumnWidth', {'1x', '1.3x'}, 'Padding', [0 0 0 0], ...
+                'ColumnSpacing', 8, 'BackgroundColor', obj.WHITE);
+            obj.pose_ax = obj.make_axes(hg);                        % un bar por dedo
+            fg = obj.cfg.fingers;
+            obj.pose_bars = bar(obj.pose_ax, zeros(1, numel(fg.max)), 'FaceColor', obj.NAVY, 'EdgeColor', 'none');
+            set(obj.pose_ax, 'XTick', 1:numel(fg.max), 'XTickLabel', num2cell(fg.letters), 'YLim', [0 100]);
+            ylabel(obj.pose_ax, 'cierre (%)');
+            obj.hist_ax = obj.make_axes(hg);                        % cierre enviado en cada ciclo
             obj.hist_line = plot(obj.hist_ax, NaN, NaN, '-o', 'Color', obj.NAVY, 'LineWidth', 1.2, ...
-                'MarkerSize', 4, 'MarkerFaceColor', obj.RED, 'MarkerEdgeColor', obj.RED);
+                'MarkerSize', 3, 'MarkerFaceColor', obj.RED, 'MarkerEdgeColor', obj.RED);
+            set(obj.hist_ax, 'YLim', [-5 105]);
             xlabel(obj.hist_ax, 'ciclo');
         end
 
@@ -570,12 +583,10 @@ classdef agent_ui < handle
         %% Actualización del dashboard
         function reset_dashboard(obj, cfg)
             % Vacía el historial al iniciar una sesión.
-            obj.commands = {};
+            obj.closures = [];
+            obj.pose = zeros(1, numel(cfg.fingers.max));            % se asume la mano abierta al empezar
             obj.history(:) = 0;                                     % canales a cero
-            obj.command_list = [{cfg.rest_command}, {cfg.gestures.command}]; % S, C, O
-            obj.hist_ax.YTick = 1:numel(obj.command_list);
-            obj.hist_ax.YTickLabel = obj.command_list;
-            obj.hist_ax.YLim = [0.5, numel(obj.command_list) + 0.5];
+            obj.pose_bars.YData = obj.pose;
             set(obj.hist_line, 'XData', NaN, 'YData', NaN);
         end
 
@@ -606,13 +617,19 @@ classdef agent_ui < handle
             obj.tiles.decision.FontColor = obj.NAVY;
             obj.tiles.confidence.Text = sprintf('%.2f', r.decided.confidence);
             obj.tiles.command.Text = r.sent.command;
+            obj.tiles.command.FontSize = ternary(numel(r.sent.command) > 3, 12, 22); % la postura es larga
             obj.tiles.command.FontColor = ternary(strcmp(r.sent.command, cfg.rest_command), obj.NAVY, obj.RED);
+            obj.note(sprintf('LLM: %s (%s) | referencia %s', r.decided.command, r.decided.reason, r.f.reference));
 
-            obj.commands{end + 1} = r.sent.command;                 % historial: solo comandos enviados
-            y = cellfun(@(c) find(strcmp(obj.command_list, c), 1), obj.commands);
-            x = 1:numel(y);
-            keep = max(1, numel(y) - 59):numel(y);                  % últimos 60 comandos
-            set(obj.hist_line, 'XData', x(keep), 'YData', y(keep));
+            pct = posture_percent(r.sent.command, cfg);             % cierre de cada dedo en %
+            if ~isempty(pct)                                        % S mantiene la postura anterior
+                obj.pose = pct;
+            end
+            obj.pose_bars.YData = obj.pose;
+            obj.closures(end + 1) = mean(obj.pose);                 % cierre medio enviado
+            x = 1:numel(obj.closures);
+            keep = max(1, numel(x) - 59):numel(x);                  % últimos 60 ciclos
+            set(obj.hist_line, 'XData', x(keep), 'YData', obj.closures(keep));
             obj.hist_ax.XLim = [x(keep(1)) - 0.5, x(keep(end)) + 0.5];
         end
 
@@ -685,8 +702,8 @@ classdef agent_ui < handle
             uialert(obj.fig, message, 'Servidor LLM', 'Icon', ternary(isempty(models), 'error', 'info'));
         end
 
-        function on_test_prosthesis(obj)
-            % Envía el comando de reposo por la comunicación elegida (HTTP, serie o Bluetooth).
+        function on_test_prosthesis(obj, command)
+            % Envía O (abrir) o C (cerrar), según el botón, por la comunicación elegida.
             cfg = obj.read_controls();
             p = cfg.prosthesis;
             progress = uiprogressdlg(obj.fig, 'Title', 'Prótesis', 'Message', 'Conectando...', 'Indeterminate', 'on');
@@ -694,7 +711,7 @@ classdef agent_ui < handle
                 if ~strcmp(p.mode, 'http')
                     send_prosthesis_command(p, 'open');             % conecta (falla con el motivo)
                 end
-                ok = send_prosthesis_command(p, cfg.rest_command);
+                ok = send_prosthesis_command(p, command);              % la mano debe moverse
                 close(progress);
                 switch p.mode
                     case 'serial'
@@ -704,7 +721,7 @@ classdef agent_ui < handle
                     otherwise
                         target = sprintf('http://%s:%d%s', p.host, p.port, p.endpoint);
                 end
-                message = sprintf('%s -> %s: %s (detalle en la consola)', cfg.rest_command, target, ...
+                message = sprintf('%s -> %s: %s (respuesta de la mano en la consola)', command, target, ...
                     ternary(ok, 'enviado', 'fallo'));
                 uialert(obj.fig, message, 'Prótesis', 'Icon', ternary(ok, 'success', 'error'));
             catch err
@@ -793,6 +810,25 @@ elseif isscalar(value)
     code = num2str(value, 10);
 else
     code = mat2str(value);
+end
+end
+
+function pct = posture_percent(command, cfg)
+% Cierre de cada dedo (0-100 %) de un comando: C = 100, O = 0, posición A..F; [] para reposo.
+fg = cfg.fingers;
+pct = [];
+if strcmp(command, 'C')
+    pct = 100 * ones(1, numel(fg.max));                     % mano cerrada
+elseif strcmp(command, 'O')
+    pct = zeros(1, numel(fg.max));                          % mano abierta
+else
+    [pos, ok] = posture_values(command, cfg);               % posición de cada dedo
+    if ok
+        pct = 100 * pos ./ fg.max;                          % fracción de su rango
+        if ~fg.open_at_zero
+            pct = 100 - pct;                                % 0 = flexionado en ese firmware
+        end
+    end
 end
 end
 

@@ -11,6 +11,7 @@ classdef agent_session < handle
         device              % fuente de señal (myo_interface)
         n                   % muestras por ventana
         prev                % último comando enviado
+        feedback = 'NADA'   % resultado del último envío a la prótesis: OK, FALLO o NADA
         smoothing = []      % memoria del suavizado
         context             % último segundo de señal filtrada (para ondas, envolvente y mapa)
         stats               % contadores de la sesión
@@ -56,7 +57,7 @@ classdef agent_session < handle
             obj.n = round(cfg.window_ms / 1000 * cfg.fs);           % muestras por ventana (40)
             obj.prev = struct('command', cfg.rest_command);         % al inicio, reposo
             obj.context = zeros(round(cfg.image.context_s * cfg.fs), 8); % contexto vacío
-            obj.stats = struct('cycles', 0, 'llm_ok', 0, 'llm_failed', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
+            obj.stats = struct('cycles', 0, 'llm_ok', 0, 'llm_failed', 0, 'agree', 0, 'prosthesis_ok', 0, 'llm_ms', 0);
             obj.clock = tic;                                        % arranca el reloj
         end
 
@@ -66,7 +67,7 @@ classdef agent_session < handle
             timer = tic;                                            % reloj del ciclo
             r.t_ms = round(1000 * toc(obj.clock));                  % tiempo desde el inicio
 
-            % 1. Adquisición
+            % PASO 1. Adquisición
             [r.emg, r.origin] = obj.device.read_window(obj.n);      % siguiente ventana del Myo (40 x 8)
             r.done = isempty(r.emg);                                % sin datos (no debería ocurrir)
             if r.done
@@ -75,36 +76,51 @@ classdef agent_session < handle
             obj.stats.cycles = obj.stats.cycles + 1;                % cuenta el ciclo
             r.cycle = obj.stats.cycles;                             % número de ciclo
             print_title(sprintf('CICLO %d | T = %d ms | %s', r.cycle, r.t_ms, r.origin));
+            log_msg('PASO1', 'Adquisición: %d muestras x 8 canales del Myo a %d Hz', size(r.emg, 1), cfg.fs);
             if cfg.console.raw_window
                 print_matrix('Señal cruda', r.emg, '%6d');          % las 40 x 8 muestras
             end
 
-            % 2. Procesamiento
-            r.f = process_signals(r.emg, cfg);                      % filtro, RMS, MAV, similitud y distancias
+            % PASOS 2 a 7. Procesamiento (process_signals)
+            r.f = process_signals(r.emg, cfg);
+            log_msg('PASO2', 'Filtro pasa-banda %d-%d Hz (Butterworth, sin desfase) + notch %d Hz', ...
+                cfg.signal.band_hz, cfg.signal.powerline_hz);
             if cfg.console.filtered_window
-                print_matrix('Señal filtrada (20-95 Hz + notch)', r.f.filtered, '%6.1f');
+                print_matrix('Señal filtrada', r.f.filtered, '%6.1f');
             end
+            log_msg('PASO3', 'Rectificación de onda completa |x| y características por canal');
             print_vector('RMS crudo  ', r.f.rms_raw, '%6.2f');
-            print_vector('RMS [0,1]  ', r.f.rms, '%6.2f');
             print_vector('MAV crudo  ', r.f.mav_raw, '%6.2f');
-            print_vector('MAV [0,1]  ', r.f.mav, '%6.2f');
-            for g = 1:numel(cfg.gestures)                           % parecido y distancia a cada gesto
-                log_msg('SEÑAL', '%s (%s): similitud %.2f | distancia %.2f', cfg.gestures(g).command, ...
-                    cfg.gestures(g).name, r.f.similarity(g), r.f.distance(g));
-            end
-            log_msg('SEÑAL', '%s (reposo): distancia %.2f', cfg.rest_command, r.f.rest_distance);
             print_vector('WL         ', r.f.wl, '%6.0f');
             print_vector('ZC         ', r.f.zc, '%6d');
             print_vector('SSC        ', r.f.ssc, '%6d');
+            log_msg('PASO4', 'Normalización: 0 = reposo del usuario, 1 = contracción máxima');
+            print_vector('RMS [0,1]  ', r.f.rms, '%6.2f');
+            print_vector('MAV [0,1]  ', r.f.mav, '%6.2f');
+            log_msg('PASO5', 'Comparación con los perfiles de cada gesto');
+            for g = 1:numel(cfg.gestures)                           % parecido y distancia a cada gesto
+                log_msg('PASO5', '  %s (%s): similitud %.2f | distancia %.2f', cfg.gestures(g).command, ...
+                    cfg.gestures(g).name, r.f.similarity(g), r.f.distance(g));
+            end
+            log_msg('PASO5', '  %s (reposo): distancia %.2f', cfg.rest_command, r.f.rest_distance);
+            act = '';                                               % activación de cada gesto como texto
+            for g = 1:numel(cfg.gestures)
+                act = [act, sprintf('%s=%.2f ', cfg.gestures(g).command, r.f.activation(g))]; %#ok<AGROW>
+            end
+            log_msg('PASO6', 'Activación de cada gesto (RMS = suma de perfiles x activación): %s', strtrim(act));
+            log_msg('PASO6', 'Cierre estimado: %.2f (0 = abierta, 1 = cerrada)', r.f.closure);
+            log_msg('PASO7', 'Postura para ese cierre: %s', r.f.posture);
+            log_msg('PASO7', 'Referencia por reglas (no se envía): %s', r.f.reference);
 
-            % 3. Entrada del LLM: texto + imágenes marcadas
+            % PASO 8. Entrada del LLM: texto + imágenes marcadas
             n = size(r.f.filtered, 1);                              % muestras nuevas
             obj.context = [obj.context(n + 1:end, :); r.f.filtered]; % desplaza y añade la ventana
-            r.vis = visual_data(r.f, obj.context, cfg);             % datos de las 4 imágenes
-            r.payload = build_payload(r.f, obj.prev, r.t_ms, cfg);  % texto de una línea
+            r.vis = visual_data(r.f, obj.context, cfg);             % datos de las imágenes
+            r.payload = build_payload(r.f, obj.prev, obj.feedback, r.t_ms, cfg); % texto de una línea
             r.image_files = generate_images(r.vis, r.f, cfg);       % PNG de las imágenes marcadas
+            log_msg('PASO8', 'Entrada al modelo de visión: texto + %d imágenes', numel(r.image_files));
 
-            % 4. LLM
+            % PASO 9. LLM (modelo de visión sin entrenamiento en EMG)
             r.reply = send_input_llm(cfg.llm, obj.system_prompt, r.payload, r.image_files);
             obj.stats.llm_ms = obj.stats.llm_ms + r.reply.latency_ms; % acumula la latencia
             if r.reply.ok
@@ -113,27 +129,32 @@ classdef agent_session < handle
                 [cmd, r.valid, r.reason] = deal([], false, r.reply.error); % no hubo respuesta
             end
 
-            % 5. Sin comando válido del LLM no se envía nada
+            % Sin acción válida del LLM no se envía nada
             [r.decided, r.sent, r.prosthesis_ok] = deal([], [], false); % por defecto, nada decidido
             if ~r.valid
                 obj.stats.llm_failed = obj.stats.llm_failed + 1;    % ciclo sin comando
-                log_msg('LLM', 'Sin comando: %s', r.reason);
+                log_msg('PASO9', 'Sin acción: %s', r.reason);
                 log_msg('PROT', 'No se envía nada; la prótesis mantiene %s', obj.prev.command);
+                obj.feedback = 'NADA';                              % el próximo ciclo lo sabrá
                 r.cycle_ms = 1000 * toc(timer);                     % duración del ciclo
                 log_msg('MAIN', 'Ciclo %d terminado en %.0f ms', r.cycle, r.cycle_ms);
                 return;
             end
-            obj.stats.llm_ok = obj.stats.llm_ok + 1;                % comando del LLM aceptado
-            log_msg('LLM', 'Comando válido');
-            r.decided = cmd;                                        % comando antes del suavizado
-            print_command('Decidido ', cmd);
+            obj.stats.llm_ok = obj.stats.llm_ok + 1;                % acción del LLM aceptada
+            log_msg('PASO9', 'Acción del LLM: %s | confianza %.2f | motivo: %s', cmd.command, ...
+                cmd.confidence, cmd.reason);
+            r.agrees = strcmp(cmd.command, r.f.reference);          % coincide con la referencia
+            obj.stats.agree = obj.stats.agree + r.agrees;
+            log_msg('PASO9', 'Coincide con la referencia por reglas: %s', yes_no(r.agrees));
+            r.decided = cmd;                                        % acción antes del suavizado
 
-            % 6. Suavizado y envío
+            % PASO 10. Suavizado, envío y retroalimentación
             [r.sent, obj.smoothing] = smooth_command(cmd, obj.smoothing, cfg); % evita parpadeos
-            print_command('A enviar ', r.sent);
-            log_msg('SUAVE', '%s', r.sent.smoothing);
-            r.prosthesis_ok = send_prosthesis_command(cfg.prosthesis, r.sent.command); % HTTP o serie
+            log_msg('PASO10', 'Suavizado: %s -> %s', r.sent.smoothing, r.sent.command);
+            r.prosthesis_ok = send_prosthesis_command(cfg.prosthesis, r.sent.command); % HTTP, serie o Bluetooth
             obj.stats.prosthesis_ok = obj.stats.prosthesis_ok + r.prosthesis_ok; % cuenta aceptados
+            obj.feedback = ternary(r.prosthesis_ok, 'OK', 'FALLO');  % FB del próximo ciclo
+            log_msg('PASO10', 'Retroalimentación para el próximo ciclo: FB:%s', obj.feedback);
             obj.prev = r.sent;                                      % PREV del siguiente ciclo
 
             r.cycle_ms = 1000 * toc(timer);                         % duración del ciclo
@@ -174,6 +195,7 @@ classdef agent_session < handle
             fprintf('Ciclos                 : %d\n', summary.cycles);
             fprintf('Comandos del LLM       : %d\n', summary.llm_ok);
             fprintf('Ciclos sin comando     : %d\n', summary.llm_failed);
+            fprintf('Iguales a la referencia: %d de %d\n', summary.agree, summary.llm_ok);
             fprintf('Aceptados por prótesis : %d\n', summary.prosthesis_ok);
             fprintf('Latencia media del LLM : %.0f ms\n', summary.llm_mean_ms);
             fprintf('Duración               : %.1f s\n', summary.duration_s);
@@ -243,7 +265,19 @@ fprintf([' ' fmt], values);
 fprintf('\n');
 end
 
-function print_command(name, cmd)
-% Imprime un comando en una línea.
-log_msg('CMD', '%s %s | confianza %.2f | origen %s', name, cmd.command, cmd.confidence, cmd.source);
+function text = yes_no(value)
+% 'sí' o 'no'.
+text = 'no';
+if value
+    text = 'sí';
+end
+end
+
+function out = ternary(condition, a, b)
+% a si se cumple la condición; si no, b.
+if condition
+    out = a;
+else
+    out = b;
+end
 end

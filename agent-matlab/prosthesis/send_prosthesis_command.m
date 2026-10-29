@@ -47,10 +47,14 @@ try
         writeline(link, command);                           % envía la letra y el fin de línea
         pause(0.02);                                        % deja llegar una posible respuesta
         reply = '(sin respuesta)';
-        if link.NumBytesAvailable > 0                       % la mano respondió algo
-            reply = char(read(link, link.NumBytesAvailable, 'char')); % lo lee todo de una vez
+        if link.NumBytesAvailable > 0                       % la mano respondió o envió telemetría
+            data = char(read(link, link.NumBytesAvailable, 'char')); % lo lee todo de una vez
+            lines = strtrim(splitlines(data));              % una entrada por línea
+            lines = lines(~cellfun(@isempty, lines));       % sin líneas vacías
+            if ~isempty(lines)
+                reply = sprintf('%s (última de %d líneas, %d bytes)', lines{end}, numel(lines), numel(data));
+            end
         end
-        reply = regexprep(reply, '\s+', ' ');               % respuesta en una sola línea
     end
     ok = true;
     log_msg('PROT', 'Respuesta (%.0f ms): %s', 1000 * toc(timer), strtrim(reply));
@@ -78,24 +82,56 @@ end
 
 function link = open_link(p)
 % Abre el puerto serie o la conexión Bluetooth clásica (SPP).
-if strcmp(p.mode, 'bluetooth')
-    link = bluetooth(p.bt_name, p.bt_channel, 'Timeout', p.timeout); % MATLAB base, R2020b+
-else
+if ~strcmp(p.mode, 'bluetooth')
     link = serialport(p.serial_port, p.baud_rate, 'Timeout', p.timeout);
+    return;
+end
+timeout = max(1, ceil(p.timeout));                          % bluetooth solo acepta enteros >= 1 s
+try
+    link = bluetooth(p.bt_name, p.bt_channel, 'Timeout', timeout); % nombre exacto (MATLAB base, R2020b+)
+catch first_error
+    log_msg('PROT', 'No se encontró "%s" por nombre exacto; buscando dispositivos parecidos...', p.bt_name);
+    found = bluetoothlist('Timeout', 10);                   % Name, Address, Channel, Status
+    disp(found);                                            % todo lo que se encontró, en la consola
+    names = cellstr(found.Name);                            % nombres como celda de textos
+    key = @(t) lower(regexprep(char(t), '[^A-Za-z0-9]', '')); % 'Handi EPN V3' = 'Handi_EPN_V3'
+    hit = find(strcmp(cellfun(key, names, 'UniformOutput', false), key(p.bt_name)), 1);
+    if isempty(hit)
+        rethrow(first_error);                               % no hay ningún dispositivo parecido
+    end
+    channel = cell_value(found.Channel(hit));               % canal SPP que anuncia la mano
+    if ~isnumeric(channel)
+        channel = str2double(channel);                      % puede venir como texto
+    end
+    if isempty(channel) || isnan(channel)
+        channel = p.bt_channel;                             % desconocido: el configurado
+    end
+    address = char(cell_value(found.Address(hit)));         % dirección Bluetooth de la mano
+    log_msg('PROT', 'Usando "%s" (%s, canal %d). Ponga ese nombre en Nombre BT para no buscar cada vez.', ...
+        names{hit}, address, channel);
+    link = bluetooth(address, channel, 'Timeout', timeout);
+end
+end
+
+function v = cell_value(v)
+% Saca el valor si viene dentro de una celda.
+if iscell(v)
+    v = v{1};
 end
 end
 
 function text = open_hint(p, message)
 % Motivo del fallo al abrir y qué hacer.
+message = strtrim(regexprep(message, '<[^>]*>', ''));       % quita los enlaces HTML de MATLAB
 if strcmp(p.mode, 'bluetooth')
-    text = sprintf(['No se pudo conectar por Bluetooth con "%s": %s\n\n' ...
-        '1. La prótesis debe estar encendida y no conectada a otro equipo (p. ej. el móvil).\n' ...
-        '2. El PC necesita Bluetooth propio o un adaptador USB Bluetooth (el adaptador del Myo, ' ...
-        'BLED112, no sirve para esto).\n' ...
-        '3. Empareje primero "%s" en Configuración de Windows > Bluetooth.\n' ...
-        'Alternativa: tras emparejarla, Windows crea un puerto COM para la prótesis; ' ...
-        'puede usarlo con la opción Serial.'], p.bt_name, message, p.bt_name);
+    text = sprintf(['No se pudo conectar por Bluetooth con "%s":\n%s\n\n' ...
+        '1. Nombre BT debe ser el nombre exacto que muestra Windows (p. ej. Handi_EPN_V3); ' ...
+        'el botón ↻ lista los dispositivos.\n' ...
+        '2. La prótesis debe estar encendida y no conectada a otro equipo (p. ej. el móvil).\n' ...
+        '3. Debe estar emparejada en Configuración de Windows > Bluetooth.\n' ...
+        'Alternativa: Windows crea un puerto COM saliente para la prótesis (Más opciones de ' ...
+        'Bluetooth > Puertos COM); úselo con la opción Puerto serie.'], p.bt_name, message);
 else
-    text = sprintf('No se pudo abrir %s: %s', link_name(p), message);
+    text = sprintf('No se pudo abrir %s:\n%s', link_name(p), message);
 end
 end

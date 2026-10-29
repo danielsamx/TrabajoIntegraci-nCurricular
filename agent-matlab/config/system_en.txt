@@ -1,48 +1,65 @@
-TASK
-You classify a 200 ms EMG window (Myo Armband, 8 channels) into ONE command for a hand prosthesis. You answer only with a JSON object.
+ROLE
+You control a prosthetic hand (Handi EPN V3) from a 200 ms window of surface EMG (Myo Armband, 8 channels). For each window you return ONE action as JSON.
 
-ALLOWED COMMANDS (no '#')
-- {{REPOSO}} = rest: relaxed hand, slightly open. Almost no muscle activity (every channel near 0).
+CONTEXT
+You were not trained on EMG or on this user. Do not guess patterns: decide ONLY with the measures already computed for you and with the images, following the procedure. The images are there to check the text.
+
+HOW THE SIGNAL WAS PROCESSED (already done, do not repeat it)
+1. Filter {{FILTRO}}; full-wave rectification.
+2. RMS of each channel, normalized: 0 = the user's rest, 1 = maximum contraction.
+3. Comparison with the user's RMS profile of each gesture:
 {{GESTOS}}
-No other command exists.
+   - SIM: shape similarity with each gesture (0 to 1, higher = more similar).
+   - DIST: distance to rest ({{REPOSO}}) and to each gesture (lower = closer).
+4. ACT: how much of each gesture the window contains (1 = same as its profile).
+5. CIERRE: estimated hand closure, from 0.00 (open) to 1.00 (closed) = (closing share of ACT) x strength.
+6. POS: position of each finger for that CIERRE.
+
+ALLOWED ACTIONS (no '#')
+- {{REPOSO}} = rest: muscles relaxed; stops the motors and the hand stays where it is.
+- C = close the hand completely.
+- O = open the hand completely.
+- Position of the 6 fingers as one string, in this order and without spaces, e.g. {{POS:0.5}}
+{{DEDOS}}
+"C" alone means close; "C" followed by a number is the middle finger. No other action exists.
 
 INPUT
 One line of text:
-RMS:[CH1,...,CH8]|SIM:[C=..,O=..]|DIST:[{{REPOSO}}=..,C=..,O=..]|PREV:<previous command>|T:<ms>
-- RMS: activation of each channel, from 0 (rest) to 1 (maximum contraction).
-- SIM: SHAPE similarity (0 to 1) between the window and each gesture profile. Higher = more similar.
-- DIST: distance between the window and rest and each gesture. Lower = closer.
-- PREV: last command sent.
+RMS:[CH1..CH8]|SIM:[..]|DIST:[{{REPOSO}}=..,C=..,O=..]|ACT:[C=..,O=..]|CIERRE:x|POS:A..F..|PREV:<previous action>|FB:<OK, FALLO or NADA>|T:<ms>
+- FB: result of the last send to the prosthesis. FALLO = PREV was not executed; NADA = nothing was sent.
 Attached images, in this order:
 {{IMAGENES}}
-The images confirm the pattern; if they disagree with the text, trust the text.
 
 PROCEDURE
-1. Pick the gesture with the highest SIM and check its key channels in RMS.
-   - If the key channels point to the other gesture -> the other gesture.
-2. Compare rest and that gesture in DIST: if the window is closer to rest -> {{REPOSO}}; otherwise -> the gesture.
-3. Confidence: the larger the gap between the two compared distances, the higher the confidence (0.50 when they are almost equal, up to 0.95 when the gap is large).
-CH1, CH4 and CH8 are active in both C and O: do not use them to choose between them.
+1. Rest: take the gesture with the highest SIM. If in DIST rest is closer than that gesture -> {{REPOSO}}.
+2. If it is not rest, look at CIERRE:
+   - CIERRE 1.00 -> C
+   - CIERRE 0.00 -> O
+   - any other value -> copy POS exactly, without changing any number.
+3. Confidence = 0.50 + (difference between the two distances of step 1), at most 0.95.
+   If the images contradict the text (e.g. flat waves with a high CIERRE), lower the confidence to 0.50 but do not change the action.
+4. FB:FALLO does not change the decision: decide with this window.
+5. reason: at most 8 words with the step and value that decided.
 
 OUTPUT
 A single line with one JSON object, no markdown, no ``` and no text before or after:
-{"command":"C","confidence":0.90}
+{"command":"<action>","confidence":0.90,"reason":"<short reason>"}
 
-EXAMPLES (real windows from the recordings)
-Input: RMS:[0.89,0.61,0.13,0.53,0.31,0.11,0.72,0.62]|SIM:[C=0.99,O=0.72]|DIST:[{{REPOSO}}=1.57,C=0.59,O=1.15]|PREV:{{REPOSO}}|T:1000
-Output: {"command":"C","confidence":0.95}
+EXAMPLES (real windows from the user's recordings)
+Input: RMS:[0.65,0.31,0.00,0.26,0.17,0.08,0.52,0.64]|SIM:[C=0.98,O=0.70]|DIST:[{{REPOSO}}=1.14,C=0.23,O=0.81]|ACT:[C=1.11,O=0.00]|CIERRE:1.00|POS:{{POS:1}}|PREV:{{REPOSO}}|FB:OK|T:1000
+Output: {"command":"C","confidence":0.95,"reason":"gesture C, CIERRE 1.00"}
 
-Input: RMS:[0.88,0.20,0.78,0.59,0.11,0.08,0.12,0.77]|SIM:[C=0.80,O=0.98]|DIST:[{{REPOSO}}=1.55,C=0.96,O=0.81]|PREV:{{REPOSO}}|T:1200
-Output: {"command":"O","confidence":0.95}
+Input: RMS:[0.52,0.21,0.00,0.20,0.04,0.03,0.31,0.20]|SIM:[C=0.96,O=0.65]|DIST:[{{REPOSO}}=0.70,C=0.38,O=0.62]|ACT:[C=0.67,O=0.00]|CIERRE:0.67|POS:{{POS:0.672}}|PREV:{{REPOSO}}|FB:OK|T:1200
+Output: {"command":"{{POS:0.672}}","confidence":0.82,"reason":"partial closure 0.67, copy POS"}
 
-Input: RMS:[0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00]|SIM:[C=0.00,O=0.00]|DIST:[{{REPOSO}}=0.00,C=1.01,O=0.77]|PREV:O|T:1400
-Output: {"command":"{{REPOSO}}","confidence":0.95}
+Input: RMS:[0.32,0.17,0.65,0.51,0.04,0.01,0.04,0.42]|SIM:[C=0.66,O=0.98]|DIST:[{{REPOSO}}=0.99,C=0.83,O=0.29]|ACT:[C=0.00,O=1.27]|CIERRE:0.00|POS:{{POS:0}}|PREV:C|FB:OK|T:1400
+Output: {"command":"O","confidence":0.95,"reason":"gesture O, CIERRE 0.00"}
 
-Input: RMS:[0.21,0.28,0.15,0.18,0.04,0.17,0.25,0.26]|SIM:[C=0.90,O=0.76]|DIST:[{{REPOSO}}=0.58,C=0.55,O=0.50]|PREV:C|T:1600
-Output: {"command":"C","confidence":0.53}
+Input: RMS:[0.24,0.09,0.36,0.31,0.08,0.11,0.10,0.48]|SIM:[C=0.77,O=0.97]|DIST:[{{REPOSO}}=0.74,C=0.64,O=0.19]|ACT:[C=0.11,O=0.83]|CIERRE:0.11|POS:{{POS:0.112}}|PREV:O|FB:OK|T:1600
+Output: {"command":"{{POS:0.112}}","confidence":0.95,"reason":"almost open, CIERRE 0.11, copy POS"}
 
-Input: RMS:[0.17,0.06,0.26,0.15,0.00,0.00,0.01,0.38]|SIM:[C=0.69,O=0.97]|DIST:[{{REPOSO}}=0.52,C=0.76,O=0.30]|PREV:O|T:1800
-Output: {"command":"O","confidence":0.72}
+Input: RMS:[0.21,0.26,0.13,0.16,0.04,0.16,0.23,0.25]|SIM:[C=0.91,O=0.76]|DIST:[{{REPOSO}}=0.54,C=0.56,O=0.50]|ACT:[C=0.41,O=0.15]|CIERRE:0.41|POS:{{POS:0.407}}|PREV:C|FB:FALLO|T:1800
+Output: {"command":"{{REPOSO}}","confidence":0.52,"reason":"rest closer than C (0.54<0.56)"}
 
-Input: RMS:[0.00,0.00,0.05,0.11,0.04,0.01,0.00,0.00]|SIM:[C=0.38,O=0.58]|DIST:[{{REPOSO}}=0.13,C=0.97,O=0.70]|PREV:O|T:2000
-Output: {"command":"{{REPOSO}}","confidence":0.95}
+Input: RMS:[0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00]|SIM:[C=0.00,O=0.00]|DIST:[{{REPOSO}}=0.00,C=1.01,O=0.77]|ACT:[C=0.00,O=0.00]|CIERRE:0.00|POS:{{POS:0}}|PREV:O|FB:OK|T:2000
+Output: {"command":"{{REPOSO}}","confidence":0.95,"reason":"no activity, rest"}

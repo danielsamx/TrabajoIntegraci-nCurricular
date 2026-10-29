@@ -6,6 +6,26 @@ Todos los cambios relevantes del proyecto se documentan aquí.
 Format based on [Keep a Changelog](https://keepachangelog.com/) · Versioning:
 [SemVer](https://semver.org/).
 
+## [2.8.0] - 2026-10-26
+
+### Changed / Cambiado
+- System prompts (es/en) reescritos por secciones: rol, contexto (modelo de visión sin entrenar en
+  EMG), cómo se procesó la señal, acciones permitidas, entrada, procedimiento, salida y ejemplos
+  reales. La respuesta incluye `reason`.
+- Acciones según el manual Handi EPN V3: `C` cerrar, `O` abrir, `S` detener motores (la mano se
+  queda) o la posición de cada dedo `A..B..C..D..E..F..` para cierres parciales.
+- Cadena de procesamiento explícita (pasa-banda 20-90 Hz, notch, rectificación, RMS) y numerada en
+  consola (PASO1..PASO10).
+- El LLM recibe además `ACT` (activación de cada gesto, mínimos cuadrados no negativos), `CIERRE`,
+  `POS` y `FB` (resultado del último envío).
+- Suavizado por tipo de acción (S, C, O o POS); dentro de POS las posiciones se actualizan cada ciclo.
+- Dashboard: postura enviada (cierre de cada dedo) y cierre por ciclo; el motivo del LLM en la barra de estado.
+
+### Added / Añadido
+- `cfg.fingers` (letras, nombres, rangos del Anexo A, sentido, paso y separador) y `cfg.gestures(g).closure`.
+- `utils/posture_string.m` y `utils/posture_values.m`.
+- Referencia por reglas impresa en cada ciclo (no se envía) y conteo de coincidencias en el resumen.
+
 ## [2.7.0] - 2026-10-23
 
 ### Added / Añadido

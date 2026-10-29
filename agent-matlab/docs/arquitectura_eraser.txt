@@ -1,4 +1,4 @@
-// Arquitectura del agente de control de prótesis sEMG + LLM (MATLAB) · v2.7.0
+// Arquitectura del agente de control de prótesis sEMG + LLM (MATLAB) · v2.8.0
 // Pegar en eraser.io > nuevo diagrama > "Cloud Architecture" (modo código)
 
 title Agente de control de prótesis · sEMG + LLM
@@ -90,19 +90,19 @@ myo_interface > agent_session: ventana 200 ms, 40 x 8
 
 // Procesamiento
 agent_session > process_signals
-Filtros sin toolbox > process_signals: Butterworth 20-95 Hz + notch
-process_signals > build_payload: RMS, SIM, DIST
+Filtros sin toolbox > process_signals: 20-90 Hz + notch, rectificación
+process_signals > build_payload: RMS, SIM, DIST, ACT, CIERRE, POS
 process_signals > Imágenes PNG: características, ondas, envolvente
 
 // LLM
 agent_session > list_llm_models: al iniciar
 list_llm_models > GET v1 models: comprobar servidor y modelo
-build_payload > send_input_llm: RMS|SIM|DIST|PREV|T
+build_payload > send_input_llm: RMS|SIM|DIST|ACT|CIERRE|POS|PREV|FB|T
 Imágenes PNG > send_input_llm: base64
 send_input_llm > POST v1 chat completions
 POST v1 chat completions > Modelo de visión
-POST v1 chat completions > parse_llm_response: JSON command, confidence
-parse_llm_response > smooth_command: válido (S, C, O)
+POST v1 chat completions > parse_llm_response: JSON command, confidence, reason
+parse_llm_response > smooth_command: válido (S, C, O o A..F)
 parse_llm_response > log_msg y logs: inválido, no se envía nada
 
 // Prótesis

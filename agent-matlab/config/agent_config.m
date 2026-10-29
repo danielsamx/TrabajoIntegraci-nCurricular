@@ -19,7 +19,7 @@ cfg.period_s = 0.2;                                         % duración mínima 
 cfg.max_cycles = Inf;                                       % ciclos máximos (Inf = sin límite)
 
 %% Procesamiento de la señal
-cfg.signal.band_hz = [20 95];                               % banda del filtro pasa-banda (Hz)
+cfg.signal.band_hz = [20 90];                               % banda del filtro pasa-banda (Hz)
 cfg.signal.powerline_hz = 60;                               % frecuencia de la red eléctrica (Hz)
 cfg.signal.rest_rms = [2 2 6 4 5 3 2 2];                    % RMS de cada canal en reposo
 cfg.signal.max_rms = [50 50 50 50 50 50 50 50];             % RMS de cada canal en contracción máxima
@@ -27,15 +27,25 @@ cfg.signal.rest_mav = 0.8 * cfg.signal.rest_rms;            % MAV en reposo (MAV
 cfg.signal.max_mav = 0.8 * cfg.signal.max_rms;              % MAV en contracción máxima
 
 %% Comandos de la prótesis (sin '#')
-cfg.rest_command = 'S';                                     % reposo: mano relajada, ligeramente abierta
+cfg.rest_command = 'S';                                     % reposo: detiene los motores, la mano se queda como está
 cfg.gestures(1).command = 'C';                              % comando de la mano cerrada
 cfg.gestures(1).name = 'mano cerrada (puño)';               % nombre para el prompt y la consola
 cfg.gestures(1).hint = 'CH7 alto y CH3 casi 0';             % canales que lo distinguen
 cfg.gestures(1).profile = [0.59 0.29 0.02 0.37 0.17 0.08 0.45 0.46]; % RMS medio CH1..CH8 en las muestras
+cfg.gestures(1).closure = 1;                                % cierre de la mano que produce (1 = cerrada)
 cfg.gestures(2).command = 'O';                              % comando de la mano abierta
 cfg.gestures(2).name = 'mano abierta';                      % nombre para el prompt y la consola
 cfg.gestures(2).hint = 'CH3 alto y CH7 casi 0';             % canales que lo distinguen
 cfg.gestures(2).profile = [0.33 0.10 0.44 0.31 0.02 0.01 0.03 0.42]; % RMS medio CH1..CH8 en las muestras
+cfg.gestures(2).closure = 0;                                % cierre de la mano que produce (0 = abierta)
+
+%% Dedos de la mano Handi EPN V3 (comandos A..F con posición, manual Anexo A)
+cfg.fingers.letters = 'ABCDEF';                             % letra de cada motor
+cfg.fingers.names = {'meñique', 'anular', 'medio', 'índice', 'pulgar inferior', 'pulgar superior'};
+cfg.fingers.max = [350 350 440 350 120 100];                % posición máxima de cada dedo (Anexo A)
+cfg.fingers.open_at_zero = true;                            % true: 0 = dedo extendido, máximo = flexionado
+cfg.fingers.step = 10;                                      % las posiciones se redondean a este paso
+cfg.fingers.separator = '';                                 % entre dedos: '' -> A100B200..., ',' -> A100,B200,...
 
 %% Imágenes que recibe el LLM (todas se ven en el dashboard)
 cfg.image.send.features = true;                             % matriz de características (RMS, MAV, WL, ZC, SSC)
@@ -47,19 +57,19 @@ cfg.image.width = 640;                                      % ancho de cada imag
 cfg.image.height = 480;                                     % alto de cada imagen en píxeles
 
 %% Servidor del LLM (LM Studio)
-cfg.llm.ip = '172.29.27.65';                                % IP del servidor
+cfg.llm.ip = '172.29.45.37';                                % IP del servidor
 cfg.llm.ports = 1234;                                       % puertos; se prueban en orden, p. ej. [1234 1235]
 cfg.llm.endpoint = '/v1/chat/completions';                  % endpoint compatible con OpenAI
 cfg.llm.model = 'mistralai/ministral-3-3b';                 % modelo cargado en LM Studio
 cfg.llm.api_key = 'lm-studio';                              % clave (LM Studio no la valida)
-cfg.llm.timeout = 0.5;                                      % s de espera por puerto
-cfg.llm.max_tokens = 40;                                    % la respuesta es un JSON corto
+cfg.llm.timeout = 5;                                        % s de espera por puerto (un modelo de visión tarda > 1 s)
+cfg.llm.max_tokens = 90;                                    % JSON corto: comando, confianza y motivo
 cfg.llm.temperature = 0;                                    % 0 = respuesta determinista
 cfg.llm.stop = {['}' newline], ['}' char(13) newline]};     % cortar al cerrar el JSON
 cfg.llm.prompt_file = fullfile(root, 'config', 'system_es.txt'); % system prompt (o system_en.txt)
 
 %% Prótesis
-cfg.prosthesis.mode = 'http';                               % comunicación: 'http', 'serial' o 'bluetooth'
+cfg.prosthesis.mode = 'bluetooth';                               % comunicación: 'http', 'serial' o 'bluetooth'
 cfg.prosthesis.host = '172.29.9.129';                      % IP del servidor de la prótesis
 cfg.prosthesis.port = 8000;                                 % puerto
 cfg.prosthesis.endpoint = '/api/command';                   % ruta del POST
@@ -67,7 +77,7 @@ cfg.prosthesis.timeout = 0.5;                               % s de espera por co
 cfg.prosthesis.serial_port = 'COM3';                        % puerto serie (Windows: COMx)
 cfg.prosthesis.baud_rate = 115200;                          % velocidad del puerto serie
 cfg.prosthesis.terminator = 'LF';                           % fin de línea: 'LF', 'CR' o 'CR/LF'
-cfg.prosthesis.bt_name = 'Handi EPN V3';                    % nombre Bluetooth de la mano (manual Handi EPN V3)
+cfg.prosthesis.bt_name = 'Handi_EPN_V3';                    % nombre Bluetooth exacto, como aparece en Windows
 cfg.prosthesis.bt_channel = 1;                              % canal SPP del ESP32 (normalmente 1)
 cfg.prosthesis.safe_command = 'S';                          % comando de reposo al terminar
 
